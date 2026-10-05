@@ -56,7 +56,7 @@ public:
 	{ }
 
 	void sflush(machine_config &config);
-	READ_LINE_MEMBER(sflush_80_r);
+	uint8_t sflush_80_r();
 private:
 
 	TIMER_CALLBACK_MEMBER(interrupt_trigger);
@@ -64,7 +64,6 @@ private:
 	virtual void machine_start() override;
 	virtual void machine_reset() override;
 
-	DECLARE_WRITE_LINE_MEMBER(int_enable_w);
 	void sflush_palette(palette_device &palette) const;
 	void colorram_w(offs_t offset, uint8_t data);
 	uint8_t colorram_r(offs_t offset);
@@ -148,7 +147,7 @@ TIMER_CALLBACK_MEMBER(sflush_state::interrupt_trigger)
 	m_interrupt_timer->adjust(m_screen->time_until_pos(next_vpos));
 }
 
-READ_LINE_MEMBER(sflush_state::sflush_80_r)
+uint8_t sflush_state::sflush_80_r()
 {
 	return (m_screen->vpos() & 0x80) ? 1 : 0;
 }
@@ -272,7 +271,7 @@ static INPUT_PORTS_START( sflush )
 	PORT_DIPNAME( 0x40, 0x00, "Coinage Display" )
 	PORT_DIPSETTING(    0x00, DEF_STR( Off ) )
 	PORT_DIPSETTING(    0x40, DEF_STR( On ) )
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_MEMBER(sflush_state, sflush_80_r) // 128V?
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_MEMBER(FUNC(sflush_state::sflush_80_r)) // 128V?
 
 	PORT_START("PADDLE")
 	PORT_BIT( 0xff, 0x6a, IPT_PADDLE ) PORT_MINMAX(0x16,0xbf) PORT_SENSITIVITY(30) PORT_KEYDELTA(30) PORT_CENTERDELTA(0)
@@ -303,7 +302,7 @@ void sflush_state::sflush(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &sflush_state::sflush_map);
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(MW8080BW_PIXEL_CLOCK, MW8080BW_HTOTAL, MW8080BW_HBEND, MW8080BW_HPIXCOUNT, MW8080BW_VTOTAL, MW8080BW_VBEND, MW8080BW_VBSTART);
 	m_screen->set_screen_update(FUNC(sflush_state::screen_update));
 

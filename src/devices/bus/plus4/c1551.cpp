@@ -9,6 +9,9 @@
 #include "emu.h"
 #include "c1551.h"
 
+#include "formats/d64_dsk.h"
+#include "formats/g64_dsk.h"
+
 
 
 //**************************************************************************
@@ -340,11 +343,10 @@ void c1551_device::device_add_mconfig(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &c1551_device::c1551_mem);
 	m_maincpu->read_callback().set(FUNC(c1551_device::port_r));
 	m_maincpu->write_callback().set(FUNC(c1551_device::port_w));
-	//config.set_perfect_quantum(m_maincpu); FIXME: not safe in a slot device - add barriers
 
 	PLS100(config, m_pla);
 
-	TPI6525(config, m_tpi0, 0);
+	TPI6525(config, m_tpi0);
 	m_tpi0->in_pa_cb().set(FUNC(c1551_device::tcbm_data_r));
 	m_tpi0->out_pa_cb().set(FUNC(c1551_device::tcbm_data_w));
 	m_tpi0->in_pb_cb().set(m_ga, FUNC(c64h156_device::yb_r));
@@ -352,7 +354,7 @@ void c1551_device::device_add_mconfig(machine_config &config)
 	m_tpi0->in_pc_cb().set(FUNC(c1551_device::tpi0_pc_r));
 	m_tpi0->out_pc_cb().set(FUNC(c1551_device::tpi0_pc_w));
 
-	TPI6525(config, m_tpi1, 0);
+	TPI6525(config, m_tpi1);
 	m_tpi1->in_pa_cb().set(FUNC(c1551_device::tcbm_data_r));
 	m_tpi1->out_pa_cb().set(FUNC(c1551_device::tcbm_data_w));
 	m_tpi1->in_pb_cb().set(FUNC(c1551_device::tpi1_pb_r));
@@ -362,18 +364,13 @@ void c1551_device::device_add_mconfig(machine_config &config)
 	C64H156(config, m_ga, XTAL(16'000'000));
 	m_ga->byte_callback().set(m_ga, FUNC(c64h156_device::atni_w));
 
-	floppy_connector &connector(FLOPPY_CONNECTOR(config, C64H156_TAG":0", 0));
+	floppy_connector &connector(FLOPPY_CONNECTOR(config, C64H156_TAG":0"));
 	connector.option_add("525ssqd", FLOPPY_525_SSQD);
 	connector.set_default_option("525ssqd");
 	connector.set_fixed(true);
 	connector.set_formats(c1551_device::floppy_formats);
 
-	PLUS4_EXPANSION_SLOT(config, m_exp, DERIVED_CLOCK(1, 1));
-	m_exp->irq_wr_callback().set(DEVICE_SELF_OWNER, FUNC(plus4_expansion_slot_device::irq_w));
-	m_exp->cd_rd_callback().set(DEVICE_SELF_OWNER, FUNC(plus4_expansion_slot_device::dma_cd_r));
-	m_exp->cd_wr_callback().set(DEVICE_SELF_OWNER, FUNC(plus4_expansion_slot_device::dma_cd_w));
-	m_exp->aec_wr_callback().set(DEVICE_SELF_OWNER, FUNC(plus4_expansion_slot_device::aec_w));
-	plus4_expansion_cards(*m_exp);
+	plus4_expansion_slot_device::add_passthrough(config, "exp");
 }
 
 
@@ -417,7 +414,6 @@ c1551_device::c1551_device(const machine_config &mconfig, const char *tag, devic
 	, m_ga(*this, C64H156_TAG)
 	, m_pla(*this, PLA_TAG)
 	, m_floppy(*this, C64H156_TAG":0:525ssqd")
-	, m_exp(*this, "exp")
 	, m_jp1(*this, "JP1")
 	, m_leds(*this, "led%u", 0U)
 	, m_tcbm_data(0xff)
@@ -436,8 +432,6 @@ c1551_device::c1551_device(const machine_config &mconfig, const char *tag, devic
 
 void c1551_device::device_start()
 {
-	m_leds.resolve();
-
 	// allocate timers
 	m_irq_timer = timer_alloc(FUNC(c1551_device::irq_timer_tick), this);
 	m_irq_timer->adjust(attotime::zero, CLEAR_LINE);
@@ -460,17 +454,14 @@ void c1551_device::device_start()
 
 void c1551_device::device_reset()
 {
-	m_maincpu->reset();
-
-	m_tpi0->reset();
-
-	m_exp->reset();
-
 	// initialize gate array
 	m_ga->test_w(1);
 	m_ga->soe_w(1);
 	m_ga->accl_w(1);
 	m_ga->atna_w(1);
+
+	offs_t const base = m_jp1->read() ? 0x1c0 : 0x1e0;
+	m_slot->io().install_readwrite_handler(base, base + 0x07, 0x18, emu::rw_delegate(*m_tpi1, FUNC(tpi6525_device::read)), emu::rw_delegate(*m_tpi1, FUNC(tpi6525_device::write)));
 }
 
 
@@ -492,60 +483,4 @@ TIMER_CALLBACK_MEMBER(c1551_device::irq_timer_tick)
 		// Tm = 0.7*(R1+R2)*C1 = 0.7*(120K+100R)*0.1uF = 0.008407s
 		m_irq_timer->adjust(attotime::from_usec(8407), ASSERT_LINE);
 	}
-}
-
-
-//-------------------------------------------------
-//  tpi1_selected -
-//-------------------------------------------------
-
-bool c1551_device::tpi1_selected(offs_t offset)
-{
-#ifdef PLA_DUMPED
-	int mux = 0, ras = 0, phi0 = 0, f7 = 0;
-	uint16_t input = A5 << 15 | A6 << 14 | A7 << 13 | A8 << 12 | A9 << 11 | mux << 10 | A10 << 9 | m_dev << 8 | ras << 7 | phi0 << 6 | A15 << 5 | A14 << 4 | A13 << 3 | A12 << 2 | A11 << 1 | f7;
-	uint8_t data = m_pla->read(input);
-	return BIT(data, 0) ? true : false;
-#endif
-
-	offs_t start_address = m_dev ? 0xfee0 : 0xfec0;
-
-	if (offset >= start_address && offset < (start_address + 0x20))
-	{
-		return true;
-	}
-
-	return false;
-}
-
-
-//-------------------------------------------------
-//  plus4_cd_r - cartridge data read
-//-------------------------------------------------
-
-uint8_t c1551_device::plus4_cd_r(offs_t offset, uint8_t data, int ba, int cs0, int c1l, int c2l, int cs1, int c1h, int c2h)
-{
-	data = m_exp->cd_r(offset, data, ba, cs0, c1l, c2l, cs1, c1h, c2h);
-
-	if (tpi1_selected(offset))
-	{
-		data = m_tpi1->read(offset & 0x07);
-	}
-
-	return data;
-}
-
-
-//-------------------------------------------------
-//  plus4_cd_w - cartridge data write
-//-------------------------------------------------
-
-void c1551_device::plus4_cd_w(offs_t offset, uint8_t data, int ba, int cs0, int c1l, int c2l, int cs1, int c1h, int c2h)
-{
-	if (tpi1_selected(offset))
-	{
-		m_tpi1->write(offset & 0x07, data);
-	}
-
-	m_exp->cd_w(offset, data, ba, cs0, c1l, c2l, cs1, c1h, c2h);
 }

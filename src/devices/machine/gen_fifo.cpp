@@ -49,9 +49,6 @@ template<typename T> void generic_fifo_device_base<T>::clear()
 
 template<typename T> void generic_fifo_device_base<T>::device_start()
 {
-	m_empty_cb.resolve_safe();
-	m_full_cb.resolve_safe();
-
 	m_sync_empty = timer_alloc(FUNC(generic_fifo_device_base<T>::sync_empty), this);
 	m_sync_full = timer_alloc(FUNC(generic_fifo_device_base<T>::sync_full), this);
 
@@ -197,5 +194,5 @@ generic_fifo_u32_device::generic_fifo_u32_device(const machine_config &mconfig, 
 {
 }
 
-DEFINE_DEVICE_TYPE(GENERIC_FIFO_U32, generic_fifo_u32_device, "generic_fifo_u32_device", "Generic fifo, u32 values")
+DEFINE_DEVICE_TYPE(GENERIC_FIFO_U32, generic_fifo_u32_device, "generic_fifo_u32_device", "Generic FIFO, u32 values")
 

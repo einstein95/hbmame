@@ -6,25 +6,25 @@
 
 #include "emucore.h"
 
-extern void __cdecl ErrorMsg(const char* fmt, ...);
-extern void __cdecl dprintf(const char* fmt, ...);
+void __cdecl ErrorMsg(const char* fmt, ...);
+void __cdecl dprintf(const char* fmt, ...);
 
 
-extern UINT GetDepth(HWND hWnd);
+UINT GetDepth(HWND hWnd);
 
 /* Open a text file */
-extern void DisplayTextFile(HWND hWnd, const char *cName);
+void DisplayTextFile(HWND hWnd, const char *cName);
 
 #define PACKVERSION(major,minor) MAKELONG(minor,major)
 
 /* Check for old version of comctl32.dll */
-extern LONG GetCommonControlVersion(void);
+LONG GetCommonControlVersion(void);
 
 void ShellExecuteCommon(HWND hWnd, const char *cName);
-extern char * MyStrStrI(const char* pFirst, const char* pSrch);
-extern char * ConvertToWindowsNewlines(const char *source);
+char * MyStrStrI(const char* pFirst, const char* pSrch);
+char * ConvertToWindowsNewlines(const char *source);
 
-extern const char * GetDriverFilename(uint32_t nIndex);
+const char * GetDriverFilename(int);
 
 BOOL DriverIsClone(uint32_t driver_index);
 BOOL DriverIsBroken(uint32_t driver_index);
@@ -43,7 +43,6 @@ BOOL DriverSupportsSaveState(uint32_t driver_index);
 BOOL DriverIsVertical(uint32_t driver_index);
 BOOL DriverIsMechanical(uint32_t driver_index);
 BOOL DriverIsArcade(uint32_t driver_index);
-BOOL DriverHasRam(uint32_t driver_index);
 
 int isDriverVector(const machine_config *config);
 int numberOfSpeakers(const machine_config *config);
@@ -64,8 +63,6 @@ TCHAR* win_tstring_strdup(LPCTSTR str);
 HANDLE win_create_file_utf8(const char* filename, DWORD desiredmode, DWORD sharemode,
 							LPSECURITY_ATTRIBUTES securityattributes, DWORD creationdisposition,
 							DWORD flagsandattributes, HANDLE templatehandle);
-DWORD win_get_current_directory_utf8(DWORD bufferlength, char* buffer);
-HANDLE win_find_first_file_utf8(const char* filename, LPWIN32_FIND_DATA findfiledata);
 void ErrorMessageBox(const char *fmt, ...);
 
  //  wstring_from_utf8
@@ -96,6 +93,35 @@ char *ui_utf8_from_wstring(const WCHAR *wstring)
 	if (result != nullptr)
 		WideCharToMultiByte(CP_UTF8, 0, wstring, -1, result, char_count, nullptr, nullptr);
 	return result;
+}
+
+/// Convert a windows UTF-16 string to a UTF-8 string
+///
+/// @param s[in] the UTF-16 string
+/// @return std::string UTF-8 string
+inline std::string ui_to_utf8(std::wstring_view wstr)
+{
+	if (wstr.empty())
+		return {};
+	int len = ::WideCharToMultiByte(CP_UTF8, 0, &wstr[0], wstr.size(), nullptr, 0, nullptr, nullptr);
+	std::string out(len, 0);
+	WideCharToMultiByte(CP_UTF8, 0, &wstr[0], wstr.size(), &out[0], len, nullptr, nullptr);
+	return out;
+}
+
+/// Convert a UTF-8 string to a windows UTF-16 string
+///
+/// @param s[in] the UTF-8 string
+/// @param n[in] the UTF-8 string's length, or -1 if string is null-terminated
+/// @return std::wstring UTF-16 string
+inline std::wstring ui_to_utf16(std::string_view str)
+{
+	if (str.empty())
+		return {};
+	int len = ::MultiByteToWideChar(CP_UTF8, 0, &str[0], str.size(), NULL, 0);
+	std::wstring out(len, 0);
+	MultiByteToWideChar(CP_UTF8, 0, &str[0], str.size(), &out[0], len);
+	return out;
 }
 
 

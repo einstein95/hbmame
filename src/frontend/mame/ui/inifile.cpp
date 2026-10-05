@@ -20,10 +20,13 @@
 #include "softlist_dev.h"
 
 #include "corestr.h"
+#include "ioprocsstream.h"
+#include "path.h"
 
 #include <algorithm>
 #include <cstring>
 #include <iterator>
+#include <locale>
 
 
 namespace {
@@ -56,7 +59,18 @@ inifile_manager::inifile_manager(ui_options &options)
 			}
 		}
 	}
-	std::stable_sort(m_ini_index.begin(), m_ini_index.end(), [] (auto const &x, auto const &y) { return 0 > core_stricmp(x.first.c_str(), y.first.c_str()); });
+	std::locale const lcl;
+	std::collate<wchar_t> const &coll = std::use_facet<std::collate<wchar_t> >(lcl);
+	std::stable_sort(
+			m_ini_index.begin(),
+			m_ini_index.end(),
+			[&coll] (auto const &x, auto const &y)
+			{
+				std::wstring const wx = wstring_from_utf8(x.first);
+				std::wstring const wy = wstring_from_utf8(y.first);
+				return 0 > coll.compare(wx.data(), wx.data() + wx.size(), wy.data(), wy.data() + wy.size());
+			}
+	);
 }
 
 //-------------------------------------------------
@@ -118,9 +132,22 @@ void inifile_manager::init_category(std::string &&filename, util::core_file &fil
 			}
 		}
 	}
-	std::stable_sort(index.begin(), index.end(), [] (auto const &x, auto const &y) { return 0 > core_stricmp(x.first.c_str(), y.first.c_str()); });
 	if (!index.empty())
+	{
+		std::locale const lcl;
+		std::collate<wchar_t> const &coll = std::use_facet<std::collate<wchar_t> >(lcl);
+		std::stable_sort(
+				index.begin(),
+				index.end(),
+				[&coll] (auto const &x, auto const &y)
+				{
+					std::wstring const wx = wstring_from_utf8(x.first);
+					std::wstring const wy = wstring_from_utf8(y.first);
+					return 0 > coll.compare(wx.data(), wx.data() + wx.size(), wy.data(), wy.data() + wy.size());
+				}
+		);
 		m_ini_index.emplace_back(std::move(filename), std::move(index));
+	}
 }
 
 
@@ -319,7 +346,7 @@ void favorite_manager::add_favorite(running_machine &machine)
 							driver,
 							imagedev->software_list_name(),
 							imagedev->instance_name(),
-							strensure(imagedev->image_type_name()));
+							imagedev->image_type_name() ? imagedev->image_type_name() : "");
 
 					// assume it's available if it's mounted
 					info.available = true;
@@ -464,31 +491,23 @@ void favorite_manager::apply_running_machine(running_machine &machine, T &&actio
 {
 	bool done(false);
 
-	// TODO: this should be changed - it interacts poorly with cartslots on arcade systems
-	if ((machine.system().flags & machine_flags::MASK_TYPE) == machine_flags::TYPE_ARCADE)
+	bool have_software(false);
+	for (device_image_interface &image_dev : image_interface_enumerator(machine.root_device()))
 	{
-		action(machine.system(), nullptr, nullptr, done);
-	}
-	else
-	{
-		bool have_software(false);
-		for (device_image_interface &image_dev : image_interface_enumerator(machine.root_device()))
+		software_info const *const sw(image_dev.software_entry());
+		if (image_dev.exists() && image_dev.loaded_through_softlist() && sw)
 		{
-			software_info const *const sw(image_dev.software_entry());
-			if (image_dev.exists() && image_dev.loaded_through_softlist() && sw)
-			{
-				assert(image_dev.software_list_name());
+			assert(image_dev.software_list_name());
 
-				have_software = true;
-				action(machine.system(), &image_dev, sw, done);
-				if (done)
-					return;
-			}
+			have_software = true;
+			action(machine.system(), &image_dev, sw, done);
+			if (done)
+				return;
 		}
-
-		if (!have_software)
-			action(machine.system(), nullptr, nullptr, done);
 	}
+
+	if (!have_software)
+		action(machine.system(), nullptr, nullptr, done);
 }
 
 void favorite_manager::update_sorted()
@@ -509,7 +528,7 @@ void favorite_manager::update_sorted()
 
 					int cmp;
 
-					cmp = core_stricmp(lhs.longname.c_str(), rhs.longname.c_str());
+					cmp = core_stricmp(lhs.longname, rhs.longname);
 					if (0 > cmp)
 						return true;
 					else if (0 < cmp)
@@ -548,32 +567,29 @@ void favorite_manager::save_favorites()
 		else
 		{
 			// generate the favorite INI
-			file.puts("[ROOT_FOLDER]\n[Favorite]\n\n");
-			util::ovectorstream buf;
+			util::owritestream str(file);
+			str.imbue(std::locale::classic());
+			str << "[ROOT_FOLDER]\n[Favorite]\n\n";
 			for (ui_software_info const &info : m_favorites)
 			{
-				buf.clear();
-				buf.rdbuf()->clear();
-
-				buf << info.shortname << '\n';
-				buf << info.longname << '\n';
-				buf << info.parentname << '\n';
-				buf << info.year << '\n';
-				buf << info.publisher << '\n';
-				util::stream_format(buf, "%d\n", int(info.supported));
-				buf << info.part << '\n';
-				util::stream_format(buf, "%s\n", info.driver->name);
-				buf << info.listname << '\n';
-				buf << info.interface << '\n';
-				buf << info.instance << '\n';
-				util::stream_format(buf, "%d\n", info.startempty);
-				buf << info.parentlongname << '\n';
-				buf << '\n'; //buf << info.usage << '\n'; TODO: store multi-line info in a recoverable format
-				buf << info.devicetype << '\n';
-				util::stream_format(buf, "%d\n", info.available);
-
-				file.puts(util::buf_to_string_view(buf));
+				str << info.shortname << '\n';
+				str << info.longname << '\n';
+				str << info.parentname << '\n';
+				str << info.year << '\n';
+				str << info.publisher << '\n';
+				util::stream_format(str, "%d\n", int(info.supported));
+				str << info.part << '\n';
+				util::stream_format(str, "%s\n", info.driver->name);
+				str << info.listname << '\n';
+				str << info.interface << '\n';
+				str << info.instance << '\n';
+				util::stream_format(str, "%d\n", info.startempty);
+				str << info.parentlongname << '\n';
+				str << '\n'; //str << info.usage << '\n'; TODO: store multi-line info in a recoverable format
+				str << info.devicetype << '\n';
+				util::stream_format(str, "%d\n", info.available);
 			}
+			str << std::flush;
 		}
 		file.close();
 	}

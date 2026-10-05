@@ -74,6 +74,7 @@ ds1302_device::ds1302_device(const machine_config &mconfig, device_type type, co
 	: device_t(mconfig, type, tag, owner, clock),
 		device_rtc_interface(mconfig, *this),
 		device_nvram_interface(mconfig, *this),
+		m_default_data(*this, DEVICE_SELF),
 		m_ram_size(ram_size)
 {
 }
@@ -149,6 +150,9 @@ TIMER_CALLBACK_MEMBER(ds1302_device::clock_tick)
 void ds1302_device::nvram_default()
 {
 	std::fill_n(&m_ram[0], m_ram_size, 0);
+
+	if (m_default_data.found())
+		std::copy_n(&m_default_data[0], std::min<std::size_t>(m_default_data.length(), m_ram_size), &m_ram[0]);
 }
 
 
@@ -159,8 +163,8 @@ void ds1302_device::nvram_default()
 
 bool ds1302_device::nvram_read(util::read_stream &file)
 {
-	size_t actual;
-	return !file.read(&m_ram[0], m_ram_size, actual) && actual == m_ram_size;
+	auto const [err, actual] = read(file, &m_ram[0], m_ram_size);
+	return !err && (actual == m_ram_size);
 }
 
 
@@ -171,8 +175,8 @@ bool ds1302_device::nvram_read(util::read_stream &file)
 
 bool ds1302_device::nvram_write(util::write_stream &file)
 {
-	size_t actual;
-	return !file.write(&m_ram[0], m_ram_size, actual) && actual == m_ram_size;
+	auto const [err, actual] = write(file, &m_ram[0], m_ram_size);
+	return !err;
 }
 
 
@@ -196,7 +200,7 @@ void ds1302_device::rtc_clock_updated(int year, int month, int day, int day_of_w
 //  ce_w - chip enable write
 //-------------------------------------------------
 
-WRITE_LINE_MEMBER( ds1302_device::ce_w )
+void ds1302_device::ce_w(int state)
 {
 	if (state && !m_ce)
 	{
@@ -388,7 +392,7 @@ void ds1302_device::output_bit()
 //  sclk_w - serial clock write
 //-------------------------------------------------
 
-WRITE_LINE_MEMBER( ds1302_device::sclk_w )
+void ds1302_device::sclk_w(int state)
 {
 	//LOG("Serial CLK: %u\n", state);
 
@@ -408,7 +412,7 @@ WRITE_LINE_MEMBER( ds1302_device::sclk_w )
 //  io_w - I/O write
 //-------------------------------------------------
 
-WRITE_LINE_MEMBER( ds1302_device::io_w )
+void ds1302_device::io_w(int state)
 {
 	//LOG("Serial I/O: %u\n", state);
 
@@ -420,7 +424,7 @@ WRITE_LINE_MEMBER( ds1302_device::io_w )
 //  io_r - I/O read
 //-------------------------------------------------
 
-READ_LINE_MEMBER( ds1302_device::io_r )
+int ds1302_device::io_r()
 {
 	return m_io;
 }

@@ -52,7 +52,7 @@ public:
 
 	void claybust(machine_config &config);
 	DECLARE_INPUT_CHANGED_MEMBER(gun_trigger);
-	DECLARE_READ_LINE_MEMBER(gun_on_r);
+	uint8_t gun_on_r();
 
 private:
 	required_device<i8085a_cpu_device> m_maincpu;
@@ -74,7 +74,7 @@ private:
 	TIMER_DEVICE_CALLBACK_MEMBER(gun_callback);
 	TIMER_CALLBACK_MEMBER(interrupt_trigger);
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	DECLARE_WRITE_LINE_MEMBER(int_enable_w);
+	void int_enable_w(int);
 	IRQ_CALLBACK_MEMBER(interrupt_vector);
 	uint8_t vpos_to_vysnc_chain_counter(int vpos);
 	int vysnc_chain_counter_to_vpos(uint8_t counter, int vblank);
@@ -148,7 +148,7 @@ TIMER_CALLBACK_MEMBER(claybust_state::interrupt_trigger)
 }
 
 
-WRITE_LINE_MEMBER(claybust_state::int_enable_w)
+void claybust_state::int_enable_w(int state)
 {
 	m_int_enable = state;
 }
@@ -233,7 +233,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(claybust_state::gun_callback)
 	m_gun_pos = 0;
 }
 
-READ_LINE_MEMBER(claybust_state::gun_on_r)
+uint8_t claybust_state::gun_on_r()
 {
 	return m_gun_pos ? 1 : 0;
 }
@@ -298,8 +298,8 @@ void claybust_state::io_map(address_map &map)
 
 static INPUT_PORTS_START( claybust )
 	PORT_START("IN1")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_MEMBER(claybust_state, gun_on_r)
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_BUTTON1 ) PORT_IMPULSE(2) PORT_CHANGED_MEMBER(DEVICE_SELF, claybust_state, gun_trigger, 0)
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_MEMBER(FUNC(claybust_state::gun_on_r))
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_BUTTON1 ) PORT_IMPULSE(2) PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(claybust_state::gun_trigger), 0)
 	PORT_BIT( 0x04, IP_ACTIVE_LOW,  IPT_COIN1 )
 	PORT_BIT( 0x08, IP_ACTIVE_LOW,  IPT_START1 )
 
@@ -349,7 +349,7 @@ void claybust_state::claybust(machine_config &config)
 	m_maincpu->out_inte_func().set(FUNC(claybust_state::int_enable_w));
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(MW8080BW_PIXEL_CLOCK, MW8080BW_HTOTAL, MW8080BW_HBEND, MW8080BW_HPIXCOUNT, MW8080BW_VTOTAL, MW8080BW_VBEND, MW8080BW_VBSTART);
 	m_screen->set_screen_update(FUNC(claybust_state::screen_update));
 

@@ -29,7 +29,7 @@ DEFINE_DEVICE_TYPE(TANBUS_MPVDU, tanbus_mpvdu_device, "tanbus_mpvdu", "Mousepack
 
 void tanbus_mpvdu_device::device_add_mconfig(machine_config &config)
 {
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(50);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(2500));
 	m_screen->set_size(1152, 625);
@@ -180,7 +180,7 @@ MC6845_UPDATE_ROW(tanbus_mpvdu_device::crtc_update_row)
 	}
 }
 
-WRITE_LINE_MEMBER(tanbus_mpvdu_device::vsync_changed)
+void tanbus_mpvdu_device::vsync_changed(int state)
 {
 	m_trom->dew_w(state);
 }

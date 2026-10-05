@@ -41,8 +41,8 @@
 //  MACROS / CONSTANTS
 //**************************************************************************
 
-#define MOS6560_VRETRACERATE 60
-#define MOS6561_VRETRACERATE 50
+#define MOS6560_VRETRACERATE ((double)MOS6560_CLOCK / MOS6560_LINES / MOS6560_CYCLES)
+#define MOS6561_VRETRACERATE ((double)MOS6561_CLOCK / MOS6561_LINES / MOS6561_CYCLES)
 
 #define MOS6560_MAME_XPOS  4           /* xleft not displayed */
 #define MOS6560_MAME_YPOS  10          /* y up not displayed */
@@ -59,11 +59,11 @@
 
 #define MOS6560_XSIZE   (4+201)        /* 4 left not visible */
 #define MOS6560_YSIZE   (10+251)       /* 10 not visible */
-/* cycles 65 */
+#define MOS6560_CYCLES  65
 
 #define MOS6561_XSIZE   (20+229)       /* 20 left not visible */
 #define MOS6561_YSIZE   (10+302)       /* 10 not visible */
-/* cycles 71 */
+#define MOS6561_CYCLES  71
 
 
 /* the following values depend on the VIC clock,
@@ -101,8 +101,8 @@ public:
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
-	void mos6560_colorram_map(address_map &map);
-	void mos6560_videoram_map(address_map &map);
+	void mos6560_colorram_map(address_map &map) ATTR_COLD;
+	void mos6560_videoram_map(address_map &map) ATTR_COLD;
 protected:
 	enum
 	{
@@ -111,19 +111,14 @@ protected:
 		TYPE_ATTACK_UFO     // NTSC-M, less features
 	};
 
-	enum
-	{
-		TIMER_LINE
-	};
-
 	mos6560_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint32_t variant);
 
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	// sound stream update overrides
-	virtual void sound_stream_update(sound_stream &stream, std::vector<read_stream_view> const &inputs, std::vector<write_stream_view> &outputs) override;
+	virtual void sound_stream_update(sound_stream &stream) override;
 
 	inline uint8_t read_videoram(offs_t offset);
 	inline uint8_t read_colorram(offs_t offset);

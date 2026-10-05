@@ -63,7 +63,7 @@ function toolchain(_buildDir, _subDir)
 		androidPlatform = "android-24"
 	end
 
-	if _ACTION == "gmake" or _ACTION == "ninja" then
+	if _ACTION == "gmake" or _ACTION == "ninja" or _ACTION == "jcdb" then
 
 		if nil == _OPTIONS["gcc"] or nil == _OPTIONS["gcc_version"] then
 			print("GCC flavor and version must be specified!")
@@ -105,13 +105,13 @@ function toolchain(_buildDir, _subDir)
 
 		if "asmjs" == _OPTIONS["gcc"] then
 
-			if not os.getenv("EMSCRIPTEN") then
-				print("Set EMSCRIPTEN enviroment variables.")
+			if not os.getenv("EMSDK") then
+				print("Set EMSDK enviroment variables.")
 			end
 
-			premake.gcc.cc   = "$(EMSCRIPTEN)/emcc"
-			premake.gcc.cxx  = "$(EMSCRIPTEN)/em++"
-			premake.gcc.ar   = "$(EMSCRIPTEN)/emar"
+			premake.gcc.cc   = "$(EMSDK)/upstream/emscripten/emcc"
+			premake.gcc.cxx  = "$(EMSDK)/upstream/emscripten/em++"
+			premake.gcc.ar   = "$(EMSDK)/upstream/emscripten/emar"
 			premake.gcc.llvm = true
 			location (_buildDir .. "projects/" .. _subDir .. "/".. _ACTION .. "-asmjs")
 		end
@@ -218,6 +218,11 @@ function toolchain(_buildDir, _subDir)
 			premake.vstudio.toolset = "Intel C++ Compiler XE 15.0"
 			location (_buildDir .. "projects/" .. _subDir .. "/".. _ACTION .. "-intel")
 		end
+	end
+
+	-- put the compilation database at the source root for editor discovery
+	if _ACTION == "jcdb" then
+		location (MAME_DIR)
 	end
 
 	if (_OPTIONS["CC"] ~= nil) then
@@ -717,4 +722,3 @@ function strip()
 
 	configuration {} -- reset configuration
 end
-

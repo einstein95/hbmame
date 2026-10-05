@@ -253,7 +253,7 @@ u16 neogeo_state::in1_r()
 	return ((m_edge->in1_r() & m_ctrl2->read_ctrl()) << 8) | 0xff;
 }
 
-CUSTOM_INPUT_MEMBER(neogeo_state::kizuna4p_start_r)
+ioport_value neogeo_state::kizuna4p_start_r()
 {
 	return (m_edge->read_start_sel() & 0x05) | ~0x05;
 }
@@ -355,7 +355,7 @@ void neogeo_state::save_ram_w(offs_t offset, u16 data, u16 mem_mask)
  *
  *************************************/
 
-CUSTOM_INPUT_MEMBER(neogeo_state::get_memcard_status)
+ioport_value neogeo_state::get_memcard_status()
 {
 	// D0 and D1 are memcard 1 and 2 presence indicators, D2 indicates memcard
 	// write protect status (we are always write enabled)
@@ -403,7 +403,7 @@ void neogeo_state::audio_command_w(u8 data)
 	audio_cpu_check_nmi();
 
 	/* boost the interleave to let the audio CPU read the command */
-	machine().scheduler().boost_interleave(attotime::zero, attotime::from_usec(50));
+	machine().scheduler().perfect_quantum(attotime::from_usec(50));
 }
 
 
@@ -418,7 +418,7 @@ u8 neogeo_state::audio_command_r()
 }
 
 
-CUSTOM_INPUT_MEMBER(neogeo_state::get_audio_result)
+ioport_value neogeo_state::get_audio_result()
 {
 	u8 ret = m_soundlatch2->read();
 
@@ -640,7 +640,6 @@ void neogeo_state::neogeo_postload()
 
 void neogeo_state::machine_start()
 {
-	m_out_digit.resolve();
 	m_type = NEOGEO_MVS;
 
 	/* set the initial main CPU bank */
@@ -870,7 +869,7 @@ INPUT_PORTS_START( neogeo )
 	PORT_BIT( 0x0200, IP_ACTIVE_LOW, IPT_OTHER ) PORT_NAME("Next Game") PORT_CODE(KEYCODE_3)
 	PORT_BIT( 0x0400, IP_ACTIVE_LOW, IPT_START2 )
 	PORT_BIT( 0x0800, IP_ACTIVE_LOW, IPT_OTHER ) PORT_NAME("Previous Game") PORT_CODE(KEYCODE_4)
-	PORT_BIT( 0x7000, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_CUSTOM_MEMBER(neogeo_state, get_memcard_status)
+	PORT_BIT( 0x7000, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_CUSTOM_MEMBER(FUNC(neogeo_state::get_memcard_status))
 	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_CUSTOM ) /* Hardware type (AES=0, MVS=1). Some games check this and show a piracy warning screen if the hardware and BIOS don't match */
 
 	PORT_START("AUDIO_COIN")
@@ -880,9 +879,9 @@ INPUT_PORTS_START( neogeo )
 	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_COIN3 ) /* What is this? "us-e" BIOS uses it as a coin input; Universe BIOS uses it to detect MVS or AES hardware */
 	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_COIN4 ) /* What is this? "us-e" BIOS uses it as a coin input; Universe BIOS uses it to detect MVS or AES hardware */
 	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_CUSTOM ) /* what is this? When ACTIVE_HIGH + IN4 bit 6 ACTIVE_LOW MVS-4 slot is detected */
-	PORT_BIT( 0x0040, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_DEVICE_MEMBER("upd4990a", upd1990a_device, tp_r)
-	PORT_BIT( 0x0080, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_DEVICE_MEMBER("upd4990a", upd1990a_device, data_out_r)
-	PORT_BIT( 0xff00, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_CUSTOM_MEMBER(neogeo_state,get_audio_result)
+	PORT_BIT( 0x0040, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_DEVICE_MEMBER("upd4990a", FUNC(upd1990a_device::tp_r))
+	PORT_BIT( 0x0080, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_READ_LINE_DEVICE_MEMBER("upd4990a", FUNC(upd1990a_device::data_out_r))
+	PORT_BIT( 0xff00, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_CUSTOM_MEMBER(FUNC(neogeo_state::get_audio_result))
 
 	PORT_START("TEST")
 	PORT_BIT( 0x003f, IP_ACTIVE_HIGH, IPT_UNUSED )
@@ -951,7 +950,7 @@ void neogeo_state::neogeo_base(machine_config &config)
 	/* video hardware */
 	config.set_default_layout(layout_neogeo);
 
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(NEOGEO_PIXEL_CLOCK, NEOGEO_HTOTAL, NEOGEO_HBEND, NEOGEO_HBSTART, NEOGEO_VTOTAL, NEOGEO_VBEND, NEOGEO_VBSTART);
 	m_screen->set_screen_update(FUNC(neogeo_state::screen_update_neogeo));
 
@@ -983,7 +982,7 @@ void neogeo_state::neogeo_arcade(machine_config &config)
 	WATCHDOG_TIMER(config, "watchdog").set_time(attotime::from_ticks(3244030, NEOGEO_MASTER_CLOCK));
 	UPD4990A(config, m_upd4990a);
 	NVRAM(config, "saveram", nvram_device::DEFAULT_ALL_0);
-	NG_MEMCARD(config, "memcard");
+	HBNG_MEMCARD(config, "memcard");
 }
 
 void neogeo_state::mvs(machine_config &config)
@@ -1090,6 +1089,18 @@ void neogeo_state::no_watchdog(machine_config &config)
 {
 	neogeo_noslot(config);
 	subdevice<watchdog_timer_device>("watchdog")->set_time(attotime::from_seconds(0.0));
+}
+
+void neogeo_state::nggno(machine_config &config)
+{
+	mvs(config);
+	m_maincpu->set_addrmap(AS_PROGRAM, &neogeo_state::main_map_noslot);
+
+	// quickload
+	quickload_image_device &quickload(QUICKLOAD(config, "quickload", "gno", attotime::from_seconds(1)));
+	quickload.set_load_callback(FUNC(neogeo_state::gno_q_cb));
+	quickload.set_interface("gno_quik");
+	SOFTWARE_LIST(config, "quik_list").set_original("gno_quik");
 }
 
 void neogeo_state::ngneo(machine_config &config)
@@ -1968,14 +1979,176 @@ void neogeo_state::init_cdc()
 }
 
 
+// Problems:
+// - Protected sets either won't load, or get address error
+// - Need to find out what "c-usage" and "s-usage" are for: (regions 10 and 11).
+// - Gfx are broken; need to unscramble FIX and SPR
+QUICKLOAD_LOAD_MEMBER(neogeo_state::gno_q_cb)
+{
+	if (image.length() < 0x60000)
+	{
+		printf("File too short\n");
+		return std::make_pair(image_error::INVALIDLENGTH, "File too short");
+	}
+
+	// main header
+	// 8 bytes = "gnodmpv1"
+	// 8 bytes = game name (we don't use)
+	// 4 bytes = flags (we don't use)
+	// 1 byte  = number of regions
+	u8 header[21];
+	image.fread( &header, 21);
+
+	if ((header[0] == 'g') && (header[1] == 'n') && (header[2] == 'o') && (header[3] == 'd')
+		&& (header[4] == 'm') && (header[5] == 'p') && (header[6] == 'v') && (header[7] == '1'))
+	{
+	}
+	else
+	{
+		printf("GNO header missing\n");
+		return std::make_pair(image_error::UNSPECIFIED, "GNO header missing");
+	}
+
+	u32 region_size = 0, csize = 0, ssize = 0, ym2_region_size = 0, offset = 21;
+
+	for (uint8_t regions = 0; regions < header[20]; regions++)
+	{
+		// Get a region header
+		// 4 bytes = size
+		// 1 byte  = region code
+		// 1 byte  = type (we don't use, 00 assumed)
+		// size bytes = data
+		u8 region_code = 0, region_type = 0;
+		image.fread( &region_size, 4);
+		image.fread( &region_code, 1);
+		image.fread( &region_type, 1);
+		offset += 6;
+		// choose region, check size, and write to it
+		printf ("region code = %d with size %d at offset %08X\n",region_code,region_size,offset);
+		offset += region_size;
+		switch (region_code)
+		{
+			case 1:
+				if (region_size > (audio_region_size - 0x10000))
+				{
+					printf("AUDIO region (%08X) in GNO file is larger than supported\n",region_size);
+					return std::make_pair(image_error::UNSPECIFIED, "AUDIO region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&audiocpu_region[0x10000], region_size);
+					std::copy(&audiocpu_region[0x10000], &audiocpu_region[0x1ffff], &audiocpu_region[0]);
+				}
+				break;
+
+			case 3:
+				if (region_size > ym_region_size)
+				{
+					printf("ADPCMA size requested (%08X) is greater than available (%08X)\n",region_size,ym_region_size);
+					return std::make_pair(image_error::UNSPECIFIED, "ADPCMA region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&ym_region[0], region_size);
+					std::copy(&ym_region[0], &ym_region[region_size-1], &memregion("ymsnd:adpcmb")->base()[0]); // fix totc,rotd
+				}
+				break;
+
+			case 4:
+				ym2_region_size = memregion("ymsnd:adpcmb")->bytes();
+				if ((region_size > ym2_region_size) || (ym_region_size > ym2_region_size))
+				{
+					printf("ADPCMB size requested (%08X) is greater than available (%08X)\n",region_size,ym2_region_size);
+					return std::make_pair(image_error::UNSPECIFIED, "ADPCMB region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&memregion("ymsnd:adpcmb")->base()[0],region_size);
+				}
+				break;
+
+			case 6:
+				if (region_size > fix_region_size)
+				{
+					printf("FIX size requested (%08X) is greater than available (%08X)\n",region_size,fix_region_size);
+					return std::make_pair(image_error::UNSPECIFIED, "FIX region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&fix_region[0],region_size);
+					ssize = region_size;
+				}
+				break;
+
+			case 8:
+				if (region_size > cpuregion_size)
+				{
+					printf("CPU size requested (%08X) is greater than available (%08X)\n",region_size,cpuregion_size);
+					return std::make_pair(image_error::UNSPECIFIED, "CPU region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&cpuregion[0],region_size);
+				}
+				break;
+
+			case 9:
+				if (region_size > spr_region_size)
+				{
+					printf("SPR size requested (%08X) is greater than available (%08X)\n",region_size,spr_region_size);
+					return std::make_pair(image_error::UNSPECIFIED, "SPR region in GNO file is larger than supported");
+				}
+				else
+				{
+					image.fread(&spr_region[0],region_size);
+					csize = region_size;
+				}
+				break;
+
+			default:
+				// Unsupported regions:
+				// 0  - audio bios (not used)
+				// 2  - audio encrypted (not used)
+				// 5  - fix bios (not used)
+				// 7  - 68k bios (not used)
+				// 10 - C(SPR) usage
+				// 11 - S(FIX) usage
+				printf("...ignored\n");
+				// jump past this region, point to next one
+				image.fseek(region_size, SEEK_CUR);
+		}
+	}
+
+	// Prepare the system
+	printf("Ready to start\n");fflush(stdout);
+	init_neogeo();
+	m_sprgen->set_sprite_region(m_region_sprites->base(), csize); // fix wh2
+	m_sprgen->set_fixed_regions(m_region_fixed->base(), ssize, m_region_fixedbios);
+	m_sprgen->optimize_sprite_data(); // fix sprites
+
+	// Fix the 512k text with horrible game-specific stuff
+	if (ssize > 0x20000)
+	{
+		u16 game = cpuregion[0x109] * 256 + cpuregion[0x108];
+		// identify kof2000, matrim, svc, kof2003
+		if ((game == 0x257) || (game == 0x266) || (game == 0x269) || (game == 0x271))
+			m_sprgen->m_fixed_layer_bank_type = 2;
+		else
+			m_sprgen->m_fixed_layer_bank_type = 1;
+	}
+
+	m_audiocpu->reset();
+	machine_reset();
+
+	return std::make_pair(std::error_condition(), std::string());
+}
+
 QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 {
 	if (image.length() < 0x60000)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "File too short");
 		printf("File too short\n");
-		image.message("File too short");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::INVALIDLENGTH, "File too short");
 	}
 
 	// check header
@@ -1987,10 +2160,8 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 	}
 	else
 	{
-		image.seterror(image_error::INVALIDIMAGE, "NEO header missing");
 		printf("NEO header missing\n");
-		image.message("NEO header missing");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "NEO header missing");
 	}
 
 	// Get file sizes
@@ -2005,60 +2176,46 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 	u64 total = 0x1000 + psize + ssize + msize + vsize + v2size + csize;
 	if (total > image.length())
 	{
-		image.seterror(image_error::INVALIDIMAGE, "File is corrupt");
 		printf("File is corrupt.\n");
-		image.message("File is corrupt");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "File is corrupt");
 	}
 
 	// Make sure regions are big enough
 	if (psize > cpuregion_size)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "CPU region in NEO file is larger than supported");
 		printf("CPU size requested (%08X) is greater than available (%08X)\n",psize,cpuregion_size);
-		image.message("CPU region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "CPU region in NEO file is larger than supported");
 	}
 
 	if (ssize > fix_region_size)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "FIX region in NEO file is larger than supported");
 		printf("FIX size requested (%08X) is greater than available (%08X)\n",ssize,fix_region_size);
-		image.message("FIX region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "FIX region in NEO file is larger than supported");
 	}
 
 	if (vsize > ym_region_size)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "ADPCMA region in NEO file is larger than supported");
 		printf("ADPCMA size requested (%08X) is greater than available (%08X)\n",vsize,ym_region_size);
-		image.message("ADPCMA region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "ADPCMA region in NEO file is larger than supported");
 	}
 
 	u32 ym2_region_size = memregion("ymsnd:adpcmb")->bytes();
 	if ((v2size > ym2_region_size) || (ym_region_size > ym2_region_size))
 	{
-		image.seterror(image_error::INVALIDIMAGE, "ADPCMB region in NEO file is larger than supported");
 		printf("ADPCMB size requested (%08X) is greater than available (%08X)\n",v2size,ym2_region_size);
-		image.message("ADPCMB region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "ADPCMB region in NEO file is larger than supported");
 	}
 
 	if (msize > (audio_region_size - 0x10000))
 	{
-		image.seterror(image_error::INVALIDIMAGE, "AUDIO region in NEO file is larger than supported");
 		printf("AUDIO region (%08X) in NEO file is larger than supported\n",msize);
-		image.message("AUDIO region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "AUDIO region in NEO file is larger than supported");
 	}
 
 	if (csize > spr_region_size)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "SPR region in NEO file is larger than supported");
 		printf("SPR size requested (%08X) is greater than available (%08X)\n",csize,spr_region_size);
-		image.message("SPR region in NEO file is larger than supported");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "SPR region in NEO file is larger than supported");
 	}
 
 	// copy the data from the NEO file to the regions
@@ -2101,7 +2258,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.p1'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&cpuregion[0], 1, psize, f);
 		fclose(f);
@@ -2113,7 +2270,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.s1'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&fix_region[0], 1, ssize, f);
 		fclose(f);
@@ -2125,7 +2282,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.m1'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&audiocpu_region[0x10000], 1, msize, f);
 		fclose(f);
@@ -2137,7 +2294,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.v1'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&ym_region[0], 1, vsize, f);
 		fclose(f);
@@ -2149,7 +2306,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.v21'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&memregion("ymsnd:adpcmb")->base()[0], 1, v2size, f);
 		fclose(f);
@@ -2161,7 +2318,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 		if (!f)
 		{
 			printf("Error opening file '555.c1'\n");
-			return image_init_result::FAIL;
+			return std::make_pair(image_error::UNSPECIFIED, " ");
 		}
 		fwrite(&spr_region[0], 1, csize, f);
 		fclose(f);
@@ -2189,7 +2346,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::neo_q_cb)
 	m_audiocpu->reset();
 	machine_reset();
 
-	return image_init_result::PASS;
+	return std::make_pair(std::error_condition(), std::string());
 }
 
 u32 neogeo_state::mvs_open7z(std::string zip_name, std::string filename, uint8_t *region_name, u32 region_size)
@@ -2235,10 +2392,8 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::mvs_q_cb)
 	}
 	if (!psize)
 	{
-		image.seterror(image_error::INVALIDIMAGE, "File is missing or unusable");
 		printf("File is missing or unusable\n");
-		image.message("File is missing or unusable");
-		return image_init_result::FAIL;
+		return std::make_pair(image_error::UNSPECIFIED, "File is missing or unusable");
 	}
 
 	fname = "srom";
@@ -2288,7 +2443,7 @@ QUICKLOAD_LOAD_MEMBER(neogeo_state::mvs_q_cb)
 	m_audiocpu->reset();
 	machine_reset();
 
-	return image_init_result::PASS;
+	return std::make_pair(std::error_condition(), std::string());
 }
 
 
@@ -2314,7 +2469,7 @@ ROM_START( neogeo )
 	ROM_REGION( 0x100000, "sprites", ROMREGION_ERASEFF )
 ROM_END
 
-ROM_START( ngneo )
+ROM_START( nggno )
 	NEOGEO_BIOS
 
 	ROM_REGION( 0x900000, "maincpu", ROMREGION_ERASEFF )
@@ -2337,6 +2492,31 @@ ROM_START( ngneo )
 	ROM_REGION( 0x1000000, "ymsnd:adpcmb", ROMREGION_ERASEFF )
 
 	ROM_REGION( 0x4000000, "sprites", ROMREGION_ERASEFF )
+ROM_END
+
+ROM_START( ngneo )
+	NEOGEO_BIOS
+
+	ROM_REGION( 0x900000, "maincpu", ROMREGION_ERASEFF )
+
+	ROM_REGION( 0x20000, "audiobios", 0 )
+	ROM_LOAD( "sm1.sm1", 0x00000, 0x20000, CRC(94416d67) SHA1(42f9d7ddd6c0931fd64226a60dc73602b2819dcf) )
+
+	ROM_REGION( 0x90000, "audiocpu", 0 )
+	ROM_LOAD( "sm1.sm1", 0x00000, 0x20000, CRC(94416d67) SHA1(42f9d7ddd6c0931fd64226a60dc73602b2819dcf) )
+
+	ROM_Y_ZOOM
+
+	ROM_REGION( 0x80000, "fixed", ROMREGION_ERASEFF )
+
+	ROM_REGION( 0x20000, "fixedbios", 0 )
+	ROM_LOAD( "sfix.sfix", 0x000000, 0x20000, CRC(c2ea0cfd) SHA1(fd4a618cdcdbf849374f0a50dd8efe9dbab706c3) )
+
+	ROM_REGION( 0x1000000, "ymsnd:adpcma", ROMREGION_ERASEFF )
+
+	ROM_REGION( 0x1000000, "ymsnd:adpcmb", ROMREGION_ERASEFF )
+
+	ROM_REGION( 0x8000000, "sprites", ROMREGION_ERASEFF )
 ROM_END
 
 ROM_START( ngmvs )
@@ -2367,6 +2547,7 @@ ROM_END
 
 /*    YEAR  NAME        PARENT    MACHINE   INPUT            CLASS         INIT    */
 GAME( 1990, neogeo,      0,        mvs,     neogeo_6slot,   neogeo_state, init_neogeo,  ROT0, "SNK", "Neo-Geo", MACHINE_IS_BIOS_ROOT | MACHINE_SUPPORTS_SAVE )
+GAME( 1990, nggno,  neogeo,      nggno,     neogeo,         neogeo_state, empty_init,  ROT0, "SNK", "Neo-Geo .gno support", 0 )
 GAME( 1990, ngneo,  neogeo,      ngneo,     neogeo,         neogeo_state, empty_init,  ROT0, "SNK", "Neo-Geo .neo support", 0 )
 GAME( 1990, ngmvs,  neogeo,      ngmvs,     neogeo,         neogeo_state, empty_init,  ROT0, "SNK", "Neo-Geo MultiMVS support", 0 )
 

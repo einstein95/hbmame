@@ -73,7 +73,7 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "video/snes_ppu.h"
+#include "snes_ppu.h"
 
 #define SNES_MAINSCREEN    0
 #define SNES_SUBSCREEN     1
@@ -193,7 +193,7 @@ snes_ppu_device::snes_ppu_device(const machine_config &mconfig, const char *tag,
 	: device_t(mconfig, SNES_PPU, tag, owner, clock)
 	, device_video_interface(mconfig, *this)
 	, device_palette_interface(mconfig, *this)
-	, m_openbus_cb(*this)
+	, m_openbus_cb(*this, 0)
 	, m_options(*this, ":OPTIONS")
 	, m_debug1(*this, ":DEBUG1")
 	, m_debug2(*this, ":DEBUG2")
@@ -208,8 +208,6 @@ snes_ppu_device::snes_ppu_device(const machine_config &mconfig, const char *tag,
 
 void snes_ppu_device::device_start()
 {
-	m_openbus_cb.resolve_safe(0);
-
 	m_vram = std::make_unique<uint8_t[]>(SNES_VRAM_SIZE);
 	m_cgram = std::make_unique<uint16_t[]>(SNES_CGRAM_SIZE/2);
 
@@ -796,10 +794,10 @@ void snes_ppu_device::update_line_mode7( uint16_t curline, uint8_t layer_idx )
 	int b = m_mode7.matrix_b;
 	int c = m_mode7.matrix_c;
 	int d = m_mode7.matrix_d;
-	int hcenter = (m_mode7.origin_x << 19) >> 19;
-	int vcenter = (m_mode7.origin_y << 19) >> 19;
-	int hoffset = (m_mode7.hor_offset << 19) >> 19;
-	int voffset = (m_mode7.ver_offset << 19) >> 19;
+	int hcenter = util::sext(m_mode7.origin_x, 13);
+	int vcenter = util::sext(m_mode7.origin_y, 13);
+	int hoffset = util::sext(m_mode7.hor_offset, 13);
+	int voffset = util::sext(m_mode7.ver_offset, 13);
 
 	uint32_t mosaic_counter = 1;
 	uint32_t mosaic_palette = 0;
@@ -1254,7 +1252,7 @@ void snes_ppu_device::refresh_scanline( bitmap_rgb32 &bitmap, uint16_t curline )
 {
 	bool blurring = m_options.read_safe(0) & 0x01;
 
-	g_profiler.start(PROFILER_VIDEO);
+	auto profile = g_profiler.start(PROFILER_VIDEO);
 
 	cache_background();
 
@@ -1282,10 +1280,7 @@ void snes_ppu_device::refresh_scanline( bitmap_rgb32 &bitmap, uint16_t curline )
 		struct SNES_SCANLINE *below = &m_scanlines[SNES_SUBSCREEN];
 #if SNES_LAYER_DEBUG
 		if (dbg_video(curline))
-		{
-			g_profiler.stop();
 			return;
-		}
 
 		/* Toggle drawing of SNES_SUBSCREEN or SNES_MAINSCREEN */
 		if (m_debug_options.draw_subscreen)
@@ -1357,8 +1352,6 @@ void snes_ppu_device::refresh_scanline( bitmap_rgb32 &bitmap, uint16_t curline )
 			}
 		}
 	}
-
-	g_profiler.stop();
 }
 
 uint16_t snes_ppu_device::pixel(uint16_t x, SNES_SCANLINE *above, SNES_SCANLINE *below, uint8_t *window_above, uint8_t *window_below)
@@ -1420,7 +1413,7 @@ void snes_ppu_device::set_latch_hv(int16_t x, int16_t y)
 void snes_ppu_device::dynamic_res_change()
 {
 	rectangle visarea = screen().visible_area();
-	attoseconds_t refresh;
+	attotime refresh;
 
 	visarea.min_x = visarea.min_y = 0;
 	visarea.max_y = m_beam.last_visible_line * m_interlace - 1;
@@ -1435,12 +1428,12 @@ void snes_ppu_device::dynamic_res_change()
 	/* FIXME: does the timing changes when the gfx mode is equal to 5 or 6? */
 	if ((m_stat78 & 0x10) == SNES_NTSC)
 	{
-		refresh = HZ_TO_ATTOSECONDS(DOTCLK_NTSC) * SNES_HTOTAL * SNES_VTOTAL_NTSC;
+		refresh = attotime::from_ticks(SNES_HTOTAL * SNES_VTOTAL_NTSC, DOTCLK_NTSC);
 		screen().configure(SNES_HTOTAL * m_htmult, SNES_VTOTAL_NTSC * m_interlace, visarea, refresh);
 	}
 	else
 	{
-		refresh = HZ_TO_ATTOSECONDS(DOTCLK_PAL) * SNES_HTOTAL * SNES_VTOTAL_PAL;
+		refresh = attotime::from_ticks(SNES_HTOTAL * SNES_VTOTAL_PAL, DOTCLK_PAL);
 		screen().configure(SNES_HTOTAL * m_htmult, SNES_VTOTAL_PAL * m_interlace, visarea, refresh);
 	}
 }

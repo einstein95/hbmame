@@ -98,7 +98,7 @@ GFXDECODE_END
 
 void tk02_device::device_add_mconfig(machine_config &config)
 {
-	screen_device &screen(SCREEN(config, "mono", SCREEN_TYPE_RASTER));
+	screen_device &screen(SCREEN(config, "mono"));
 	screen.set_color(rgb_t::green());
 	screen.set_raw(XTAL(8'000'000) * 2, 1024, 0, 640, 312, 0, 250);
 	screen.set_screen_update("crtc", FUNC(mc6845_device::screen_update));
@@ -196,7 +196,7 @@ MC6845_UPDATE_ROW( tk02_device::crtc_update_row )
 	}
 }
 
-WRITE_LINE_MEMBER( tk02_device::de_w )
+void tk02_device::de_w(int state)
 {
 	m_de = state;
 }

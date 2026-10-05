@@ -91,17 +91,19 @@ public:
 protected:
 	a2bus_timemasterho_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void device_start() override;
-	virtual void device_reset() override;
-	virtual void device_add_mconfig(machine_config &config) override;
-	virtual const tiny_rom_entry *device_rom_region() const override;
-	virtual ioport_constructor device_input_ports() const override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 
 	// overrides of standard a2bus slot functions
 	virtual uint8_t read_c0nx(uint8_t offset) override;
 	virtual void write_c0nx(uint8_t offset, uint8_t data) override;
 	virtual uint8_t read_cnxx(uint8_t offset) override;
 	virtual uint8_t read_c800(uint16_t offset) override;
+	virtual bool take_c800() const override { return true; }
+	virtual void reset_from_bus() override;
 
 	required_device<pia6821_device> m_pia;
 	required_device<msm5832_device> m_msm5832;
@@ -112,8 +114,8 @@ private:
 	void update_irqs();
 	void pia_out_a(uint8_t data);
 	void pia_out_b(uint8_t data);
-	DECLARE_WRITE_LINE_MEMBER(pia_irqa_w);
-	DECLARE_WRITE_LINE_MEMBER(pia_irqb_w);
+	void pia_irqa_w(int state);
+	void pia_irqb_w(int state);
 
 	bool m_irqa = false, m_irqb = false;
 	bool m_started = false;
@@ -138,7 +140,7 @@ ioport_constructor a2bus_timemasterho_device::device_input_ports() const
 
 void a2bus_timemasterho_device::device_add_mconfig(machine_config &config)
 {
-	PIA6821(config, m_pia, 1021800);
+	PIA6821(config, m_pia, A2BUS_1M_CLOCK);
 	m_pia->writepa_handler().set(FUNC(a2bus_timemasterho_device::pia_out_a));
 	m_pia->writepb_handler().set(FUNC(a2bus_timemasterho_device::pia_out_b));
 	m_pia->irqa_handler().set(FUNC(a2bus_timemasterho_device::pia_irqa_w));
@@ -189,6 +191,11 @@ void a2bus_timemasterho_device::device_reset()
 	m_started = true;
 }
 
+void a2bus_timemasterho_device::reset_from_bus()
+{
+	m_pia->reset();
+}
+
 
 /*-------------------------------------------------
     read_c0nx - called for reads from this card's c0nx space
@@ -227,7 +234,7 @@ uint8_t a2bus_timemasterho_device::read_cnxx(uint8_t offset)
 	{
 		if (!(m_dsw1->read() & 2))  // TimeMaster native
 		{
-			return m_rom[offset+0xc00];
+			return m_rom[offset|0xc00];
 		}
 	}
 
@@ -241,7 +248,7 @@ uint8_t a2bus_timemasterho_device::read_cnxx(uint8_t offset)
 
 uint8_t a2bus_timemasterho_device::read_c800(uint16_t offset)
 {
-	return m_rom[offset+0xc00];
+	return m_rom[offset|0xc00];
 }
 
 void a2bus_timemasterho_device::pia_out_a(uint8_t data)
@@ -297,13 +304,13 @@ void a2bus_timemasterho_device::update_irqs()
 	}
 }
 
-WRITE_LINE_MEMBER(a2bus_timemasterho_device::pia_irqa_w)
+void a2bus_timemasterho_device::pia_irqa_w(int state)
 {
 	m_irqa = state;
 	update_irqs();
 }
 
-WRITE_LINE_MEMBER(a2bus_timemasterho_device::pia_irqb_w)
+void a2bus_timemasterho_device::pia_irqb_w(int state)
 {
 	m_irqb = state;
 	update_irqs();

@@ -9,7 +9,7 @@
 #include "machine/watchdog.h"
 #include "sound/ymopn.h"
 #include "machine/upd1990a.h"
-#include "machine/ng_memcard.h"
+#include "machine/hbng_memcard.h"
 #include "machine/gen_latch.h"
 #include "video/neogeo_spr.h"
 #include "imagedev/snapquik.h"
@@ -92,6 +92,7 @@ public:
 	void neogeo_mj(machine_config &config);
 	void neogeo_noctrl(machine_config &config);
 	void neogeo_noslot(machine_config &config);
+	void nggno(machine_config &config);
 	void ngmvs(machine_config &config);
 	void ngneo(machine_config &config);
 	void no_watchdog(machine_config &config);
@@ -200,9 +201,9 @@ public:
 	void init_vliner();
 	void init_xs02();
 	void init_zupapa();
-	DECLARE_CUSTOM_INPUT_MEMBER(get_memcard_status);
-	DECLARE_CUSTOM_INPUT_MEMBER(get_audio_result);
-	DECLARE_CUSTOM_INPUT_MEMBER(kizuna4p_start_r);
+	ioport_value get_memcard_status();
+	ioport_value get_audio_result();
+	ioport_value kizuna4p_start_r();
 	DECLARE_INPUT_CHANGED_MEMBER(select_bios);
 
 	// public for kf2k2ps2re
@@ -235,6 +236,7 @@ private:
 	TIMER_CALLBACK_MEMBER(display_position_interrupt_callback);
 	TIMER_CALLBACK_MEMBER(display_position_vblank_callback);
 	TIMER_CALLBACK_MEMBER(vblank_interrupt_callback);
+	DECLARE_QUICKLOAD_LOAD_MEMBER(gno_q_cb);
 	DECLARE_QUICKLOAD_LOAD_MEMBER(mvs_q_cb);
 	DECLARE_QUICKLOAD_LOAD_MEMBER(neo_q_cb);
 
@@ -333,7 +335,7 @@ private:
 	optional_shared_ptr<u16 > m_save_ram;
 	required_device<screen_device> m_screen;
 	optional_device<palette_device> m_palette;
-	optional_device<ng_memcard_device> m_memcard;
+	optional_device<hbng_memcard_device> m_memcard;
 	optional_ioport m_dsw;
 	optional_ioport m_trackx;
 	optional_ioport m_tracky;

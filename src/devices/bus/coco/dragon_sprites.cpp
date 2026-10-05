@@ -57,7 +57,7 @@ void dragon_sprites_device::device_add_mconfig(machine_config &config)
 	m_vdp->set_screen("screen");
 	m_vdp->set_vram_size(0x4000);
 	m_vdp->int_callback().set(FUNC(dragon_sprites_device::nmi_w));
-	SCREEN(config, "screen", SCREEN_TYPE_RASTER);
+	SCREEN(config, "screen");
 }
 
 //-------------------------------------------------
@@ -111,7 +111,7 @@ void dragon_sprites_device::cts_write(offs_t offset, u8 data)
 }
 
 
-WRITE_LINE_MEMBER(dragon_sprites_device::nmi_w)
+void dragon_sprites_device::nmi_w(int state)
 {
 	// set the NMI line
 	set_line_value(line::NMI, state);

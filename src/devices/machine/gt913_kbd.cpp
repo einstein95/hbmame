@@ -24,7 +24,7 @@
 //  DEVICE DEFINITIONS
 //**************************************************************************
 
-DEFINE_DEVICE_TYPE(GT913_KBD_HLE, gt913_kbd_hle_device, "gt913_kbd_hle", "Casio GT913F keyboard controller (HLE)")
+DEFINE_DEVICE_TYPE(GT913_KBD_HLE, gt913_kbd_hle_device, "gt913_kbd_hle", "Casio GT913 keyboard controller (HLE)")
 
 gt913_kbd_hle_device::gt913_kbd_hle_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, GT913_KBD_HLE, tag, owner, clock),
@@ -36,8 +36,6 @@ gt913_kbd_hle_device::gt913_kbd_hle_device(const machine_config &mconfig, const 
 
 void gt913_kbd_hle_device::device_start()
 {
-	m_irq_cb.resolve_safe();
-
 	save_item(NAME(m_status));
 	save_item(NAME(m_fifo));
 	save_item(NAME(m_fifo_read));

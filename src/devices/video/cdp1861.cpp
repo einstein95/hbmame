@@ -95,7 +95,7 @@ void cdp1861_device::device_config_complete()
 	if (!has_screen())
 		return;
 
-	if (!screen().refresh_attoseconds())
+	if (!screen().has_been_setup())
 		screen().set_raw(clock(), SCREEN_WIDTH, HBLANK_END, HBLANK_START, TOTAL_SCANLINES, SCANLINE_VBLANK_END, SCANLINE_VBLANK_START);
 
 	if (!screen().has_screen_update())
@@ -109,11 +109,6 @@ void cdp1861_device::device_config_complete()
 
 void cdp1861_device::device_start()
 {
-	// resolve callbacks
-	m_write_int.resolve_safe();
-	m_write_dma_out.resolve_safe();
-	m_write_efx.resolve_safe();
-
 	// allocate timers
 	m_int_timer = timer_alloc(FUNC(cdp1861_device::int_tick), this);
 	m_efx_timer = timer_alloc(FUNC(cdp1861_device::efx_tick), this);

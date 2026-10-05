@@ -2,7 +2,7 @@
 // copyright-holders:Curt Coder
 /*********************************************************************
 
-    formats/d81_dsk.c
+    formats/d81_dsk.cpp
 
     Commodore 1581 disk image format
 
@@ -79,23 +79,23 @@ d81_format::d81_format() : wd177x_format(formats)
 {
 }
 
-const char *d81_format::name() const
+const char *d81_format::name() const noexcept
 {
 	return "d81";
 }
 
-const char *d81_format::description() const
+const char *d81_format::description() const noexcept
 {
 	return "Commodore 1581 disk image";
 }
 
-const char *d81_format::extensions() const
+const char *d81_format::extensions() const noexcept
 {
-	return "d81";
+	return "d81,dsk,ima,img";
 }
 
 const d81_format::format d81_format::formats[] = {
-	// track description
+	// CBM DOS 800KB
 	// 32x4e 12x00 3xf5 fe 2x00 01 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
 	// 35x4e 12x00 3xf5 fe 2x00 02 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
 	// 35x4e 12x00 3xf5 fe 2x00 03 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
@@ -110,6 +110,22 @@ const d81_format::format d81_format::formats[] = {
 	{
 		floppy_image::FF_35, floppy_image::DSDD, floppy_image::MFM,
 		2000, 10, 80, 2, 512, {}, 1, {}, 32, 22, 35
+	},
+
+	// MS-DOS 720KB
+	// 32x4e 12x00 3xf5 fe 2x00 01 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 02 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 03 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 04 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 05 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 06 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 07 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 08 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 50x4e 12x00 3xf5 fe 2x00 09 02 f7 22x4e 12x00 3xf5 fb 512x00 f7
+	// 653x4e
+	{
+		floppy_image::FF_35, floppy_image::DSDD, floppy_image::MFM,
+		2000, 9, 80, 2, 512, {}, 1, {}, 32, 22, 50
 	},
 
 	{}

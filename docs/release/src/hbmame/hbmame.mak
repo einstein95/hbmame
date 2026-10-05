@@ -15,6 +15,7 @@ LAYOUTS += \
 	$(SRC)/mame/layout/attackfc.lay \
 	$(SRC)/mame/layout/bzone.lay \
 	$(SRC)/mame/layout/contcirc.lay \
+	$(SRC)/mame/layout/cothello.lay \
 	$(SRC)/mame/layout/galactic.lay \
 	$(SRC)/mame/layout/gunchamp.lay \
 	$(SRC)/mame/layout/invaders.lay \
@@ -26,9 +27,8 @@ LAYOUTS += \
 
 # MAME layouts that are needed for compile to succeed, not used by HBMAME
 LAYOUTS += \
+	$(SRC)/mame/layout/racinfrc.lay \
 	$(SRC)/mame/layout/redbaron.lay \
-	$(SRC)/mame/layout/gnw_dualh.lay \
-	$(SRC)/mame/layout/gnw_dualv.lay \
 	$(SRC)/mame/layout/inttoote.lay \
 	$(SRC)/mame/layout/jockeyc.lay \
 	$(SRC)/mame/layout/setaroul.lay \
@@ -62,7 +62,11 @@ LAYOUTS += \
 	$(SRC)/mame/layout/segabillv.lay \
 	$(SRC)/mame/layout/speedfrk.lay \
 	$(SRC)/mame/layout/critcrsh.lay \
-	$(SRC)/mame/layout/hh_sm500_test.lay \
+	$(SRC)/mame/layout/elbaskb.lay \
+	$(SRC)/mame/layout/hh_sm510_dualh.lay \
+	$(SRC)/mame/layout/hh_sm510_dualv.lay \
+	$(SRC)/mame/layout/hh_sm510_single.lay \
+	$(SRC)/mame/layout/hh_sm510_tripleh.lay \
 	$(SRC)/mame/layout/chasehq.lay \
 	$(SRC)/mame/layout/dblaxle.lay \
 	$(SRC)/mame/layout/enforceja.lay \

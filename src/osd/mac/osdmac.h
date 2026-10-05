@@ -7,17 +7,13 @@
 #include "modules/osdmodule.h"
 #include "modules/font/font_module.h"
 
+#include <cstring>
+
 //============================================================
 //  Defines
 //============================================================
 
 #define MACOPTION_INIPATH               "inipath"
-
-#define MACOPTVAL_OPENGL                "opengl"
-#define MACOPTVAL_BGFX                  "bgfx"
-#define MACOPTVAL_METAL                 "metal"
-
-#define MACOPTVAL_GLLIB                 "/System/Library/Frameworks/OpenGL.framework/Libraries/libGL.dylib"
 
 //============================================================
 //  TYPE DEFINITIONS
@@ -44,12 +40,11 @@ public:
 	// general overridables
 	virtual void init(running_machine &machine) override;
 	virtual void update(bool skip_redraw) override;
-	virtual void input_update() override;
+	virtual void input_update(bool relative_reset) override;
+	virtual void check_osd_inputs() override;
 
 	// input overridables
 	virtual void customize_input_type_list(std::vector<input_type_entry> &typelist) override;
-
-	virtual void video_register() override;
 
 	virtual bool video_init() override;
 	virtual bool window_init() override;
@@ -57,17 +52,19 @@ public:
 	virtual void video_exit() override;
 	virtual void window_exit() override;
 
+	virtual void process_events() override;
+	virtual bool has_focus() const override;
+
 	// sdl specific
-	void poll_inputs(running_machine &machine);
 	void release_keys();
 	bool should_hide_mouse();
 	void process_events_buf();
 
-	virtual mac_options &options() override { return m_options; }
+	// -video none runs behind a window that is never shown, so the menu bar
+	// and the Dock can still quit MAME without it ever taking focus
+	bool headless() const { return strcmp(m_options.video(), OSDOPTVAL_NONE) == 0; }
 
-protected:
-	virtual void build_slider_list() override;
-	virtual void update_slider_list() override;
+	virtual mac_options &options() override { return m_options; }
 
 private:
 	virtual void osd_exit() override;

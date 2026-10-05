@@ -132,7 +132,7 @@ public:
 	configuration_manager  &configuration() const { assert(m_configuration != nullptr); return *m_configuration; }
 	output_manager  &output() const { assert(m_output != nullptr); return *m_output; }
 	ui_manager &ui() const { assert(m_ui != nullptr); return *m_ui; }
-	ui_input_manager &ui_input() const { assert(m_ui_input != nullptr); return *m_ui_input; }
+	ui_input_manager &ui_input() const noexcept;
 	crosshair_manager &crosshair() const { assert(m_crosshair != nullptr); return *m_crosshair; }
 	image_manager &image() const { assert(m_image != nullptr); return *m_image; }
 	rom_load_manager &rom_load() const { assert(m_rom_load != nullptr); return *m_rom_load; }
@@ -140,12 +140,10 @@ public:
 	debug_view_manager &debug_view() const { assert(m_debug_view != nullptr); return *m_debug_view; }
 	debugger_manager &debugger() const { assert(m_debugger != nullptr); return *m_debugger; }
 	natural_keyboard &natkeyboard() noexcept { assert(m_natkeyboard != nullptr); return *m_natkeyboard; }
-	template <class DriverClass> DriverClass *driver_data() const { return &downcast<DriverClass &>(root_device()); }
 	machine_phase phase() const { return m_current_phase; }
 	bool paused() const { return m_paused || (m_current_phase != machine_phase::RUNNING); }
 	bool exit_pending() const { return m_exit_pending; }
 	bool hard_reset_pending() const { return m_hard_reset_pending; }
-	bool ui_active() const { return m_ui_active; }
 	const std::string &basename() const { return m_basename; }
 	int sample_rate() const { return m_sample_rate; }
 	bool save_or_load_pending() const { return !m_saveload_pending_file.empty(); }
@@ -162,7 +160,7 @@ public:
 	bool allow_logging() const { return !m_logerror_list.empty(); }
 
 	// fetch items by name
-	template <class DeviceClass> inline DeviceClass *device(const char *tag) { return downcast<DeviceClass *>(root_device().subdevice(tag)); }
+	template <class DeviceClass> [[deprecated("absolute tag lookup; use subdevice or finder instead")]] inline DeviceClass *device(const char *tag) { return downcast<DeviceClass *>(root_device().subdevice(tag)); }
 
 	// immediate operations
 	int run(bool quiet);
@@ -172,9 +170,8 @@ public:
 	void add_notifier(machine_notification event, machine_notify_delegate callback, bool first = false);
 	void call_notifiers(machine_notification which);
 	void add_logerror_callback(logerror_callback callback);
-	void set_ui_active(bool active) { m_ui_active = active; }
 	void debug_break();
-	//void export_http_api();
+	void export_http_api();
 
 	// TODO: Do saves and loads still require scheduling?
 	void immediate_save(std::string_view filename);
@@ -220,18 +217,22 @@ public:
 	std::unique_ptr<emu_file> steal_debuglogfile();
 
 private:
-	class side_effects_disabler {
+	class side_effects_disabler
+	{
+	private:
 		running_machine *m_machine;
 		bool m_disable_se;
 
 	public:
-		side_effects_disabler(running_machine *m, bool disable_se) : m_machine(m), m_disable_se(disable_se) {
-			if(m_disable_se)
+		side_effects_disabler(running_machine *m, bool disable_se) : m_machine(m), m_disable_se(disable_se)
+		{
+			if (m_disable_se)
 				m_machine->disable_side_effects_count();
 		}
 
-		~side_effects_disabler() {
-			if(m_disable_se)
+		~side_effects_disabler()
+		{
+			if (m_disable_se)
 				m_machine->enable_side_effects_count();
 		}
 
@@ -239,8 +240,11 @@ private:
 		side_effects_disabler(side_effects_disabler &&) = default;
 	};
 
+	class log_file_helper;
+	using log_file_helper_ptr = std::unique_ptr<log_file_helper>;
+
 	void disable_side_effects_count() { m_side_effects_disabled++; }
-	void enable_side_effects_count()  { m_side_effects_disabled--; }
+	void enable_side_effects_count() { m_side_effects_disabled--; }
 
 	// internal helpers
 	template <typename T> struct is_null { template <typename U> static bool value(U &&x) { return false; } };
@@ -253,10 +257,7 @@ private:
 	void nvram_load();
 	void nvram_save();
 	void popup_clear() const;
-	void popup_message(util::format_argument_pack<std::ostream> const &args) const;
-
-	// internal callbacks
-	void logfile_callback(const char *buffer);
+	void popup_message(util::format_argument_pack<char> const &args) const;
 
 	// internal device helpers
 	void start_all_devices();
@@ -275,7 +276,7 @@ private:
 	std::unique_ptr<sound_manager> m_sound;            // internal data from sound.cpp
 	std::unique_ptr<video_manager> m_video;            // internal data from video.cpp
 	ui_manager *m_ui;                                  // internal data from ui.cpp
-	std::unique_ptr<ui_input_manager> m_ui_input;      // internal data from uiinput.cpp
+	std::unique_ptr<ui_input_manager_impl> m_ui_input; // internal data from uiinput.cpp
 	std::unique_ptr<tilemap_manager> m_tilemap;        // internal data from tilemap.cpp
 	std::unique_ptr<debug_view_manager> m_debug_view;  // internal data from debugvw.cpp
 	std::unique_ptr<network_manager> m_network;        // internal data from network.cpp
@@ -297,11 +298,10 @@ private:
 
 	// misc state
 	u32                     m_rand_seed;            // current random number seed
-	bool                    m_ui_active;            // ui active or not (useful for games / systems with keyboard inputs)
 	time_t                  m_base_time;            // real time at initial emulation time
 	std::string             m_basename;             // basename used for game-related paths
 	int                     m_sample_rate;          // the digital audio sample rate
-	std::unique_ptr<emu_file>  m_logfile;           // pointer to the active error.log file
+	log_file_helper_ptr     m_logfile;              // pointer to the active error.log file
 	std::unique_ptr<emu_file>  m_debuglogfile;      // pointer to the active debug.log file
 
 	// load/save management
@@ -400,7 +400,7 @@ inline void running_machine::logerror(Format &&fmt, Params &&... args) const
 	// process only if there is a target
 	if (allow_logging())
 	{
-		g_profiler.start(PROFILER_LOGERROR);
+		auto profile = g_profiler.start(PROFILER_LOGERROR);
 
 		// dump to the buffer
 		m_string_buffer.clear();
@@ -409,9 +409,7 @@ inline void running_machine::logerror(Format &&fmt, Params &&... args) const
 		m_string_buffer.put('\0');
 
 		strlog(&m_string_buffer.vec()[0]);
-
-		g_profiler.stop();
 	}
 }
 
-#endif  /* MAME_EMU_MACHINE_H */
+#endif // MAME_EMU_MACHINE_H

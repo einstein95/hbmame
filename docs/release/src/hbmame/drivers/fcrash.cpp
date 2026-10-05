@@ -130,7 +130,7 @@ void fcrash_state::fcrash_snd_bankswitch_w(uint8_t data)
 	membank("bank1")->set_entry(data & 0x07);
 }
 
-WRITE_LINE_MEMBER(fcrash_state::m5205_int1)
+void fcrash_state::m5205_int1(int state)
 {
 	m_msm_1->data_w(m_sample_buffer1 & 0x0f);
 	m_sample_buffer1 >>= 4;
@@ -139,7 +139,7 @@ WRITE_LINE_MEMBER(fcrash_state::m5205_int1)
 		m_audiocpu->pulse_input_line(INPUT_LINE_NMI, attotime::zero);
 }
 
-WRITE_LINE_MEMBER(fcrash_state::m5205_int2)
+void fcrash_state::m5205_int2(int state)
 {
 	m_msm_2->data_w(m_sample_buffer2 & 0x0f);
 	m_sample_buffer2 >>= 4;
@@ -162,7 +162,7 @@ void fcrash_state::cawingbl_soundlatch_w(offs_t offset, uint16_t data, uint16_t 
 	{
 		m_soundlatch->write(data >> 8);
 		m_audiocpu->set_input_line(0, HOLD_LINE);
-		machine().scheduler().boost_interleave(attotime::zero, attotime::from_usec(50)); /* boost the interleave or some voices get dropped */
+		machine().scheduler().perfect_quantum(attotime::from_usec(50)); /* boost the interleave or some voices get dropped */
 	}
 }
 
@@ -442,7 +442,7 @@ void fcrash_state::fcrash(machine_config &config)
 	MCFG_MACHINE_RESET_OVERRIDE(fcrash_state, fcrash)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);
@@ -499,7 +499,7 @@ void fcrash_state::ffightblb(machine_config &config)
 	MCFG_MACHINE_RESET_OVERRIDE(fcrash_state, fcrash)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);
@@ -546,7 +546,7 @@ void fcrash_state::kodb(machine_config &config)
 	MCFG_MACHINE_START_OVERRIDE(fcrash_state, kodb)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);
@@ -589,7 +589,7 @@ void fcrash_state::mtwinsb(machine_config &config)
 	MCFG_MACHINE_START_OVERRIDE(fcrash_state, mtwinsb)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);
@@ -632,7 +632,7 @@ void fcrash_state::sf2m1(machine_config &config)
 	MCFG_MACHINE_START_OVERRIDE(fcrash_state, sf2m1)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(CPS_PIXEL_CLOCK, CPS_HTOTAL, CPS_HBEND, CPS_HBSTART, CPS_VTOTAL, CPS_VBEND, CPS_VBSTART);
 	m_screen->set_screen_update(FUNC(fcrash_state::screen_update_fcrash));
 	m_screen->screen_vblank().set(FUNC(fcrash_state::screen_vblank_cps1));
@@ -669,7 +669,7 @@ void fcrash_state::sgyxz(machine_config &config)
 	MCFG_MACHINE_RESET_OVERRIDE(fcrash_state, sgyxz)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);
@@ -726,7 +726,7 @@ void fcrash_state::varthb(machine_config &config)
 	MCFG_MACHINE_START_OVERRIDE(fcrash_state, cps1)
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_screen->set_size(64*8, 32*8);

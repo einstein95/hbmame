@@ -26,7 +26,7 @@ static constexpr int clamp(int v)
 //
 //
 
-spu_device::reverb::reverb(const int hz, const int maxdelay)
+spu_device::reverb::reverb(const int hz, const size_t maxdelay)
 	:  yp(0),
 		max_delay(maxdelay),
 		sound_hz(hz)
@@ -308,7 +308,7 @@ void spu_device::reverb::process(signed short *output,
 	signed short *sp=(signed short *)reverb_input,
 								*dp=(signed short *)output;
 
-	if (rp->band_gain>0.0f)
+	if (rp && rp->band_gain>0.0f)
 	{
 		// Do reverb processing
 

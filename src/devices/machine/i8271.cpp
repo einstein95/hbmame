@@ -40,11 +40,6 @@ void i8271_device::set_select_lines_connected(bool _select)
 
 void i8271_device::device_start()
 {
-	intrq_cb.resolve_safe();
-	drq_cb.resolve_safe();
-	hdl_cb.resolve_safe();
-	opt_cb.resolve_safe();
-
 	for(int i=0; i != 2; i++) {
 		char name[2];
 		flopi[i].tm = timer_alloc(FUNC(i8271_device::floppy_tick), this);
@@ -568,6 +563,7 @@ void i8271_device::live_run(attotime limit)
 			return;
 
 		case WRITE_SECTOR_DATA:
+			cur_live.pll.start_writing(cur_live.tm, cur_live.fi->dev);
 			if(cur_live.byte_counter < 6)
 				live_write_fm(0x00);
 			else if(cur_live.byte_counter < 7) {
@@ -1421,7 +1417,7 @@ void i8271_device::format_track_continue(floppy_info &fi)
 		case WAIT_INDEX_DONE:
 			logerror("index found, writing track\n");
 			fi.sub_state = TRACK_DONE;
-			cur_live.pll.start_writing(machine().time());
+			cur_live.pll.start_writing(machine().time(), cur_live.fi->dev);
 			set_drq(true);
 			live_start(fi, WRITE_TRACK_PRE_SECTORS);
 			return;

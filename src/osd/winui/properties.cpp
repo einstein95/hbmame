@@ -110,6 +110,7 @@ b) Exit the dialog.
 #include "emu_opts.h"
 #include "resource.h"
 #include "dijoystick.h"     /* For DIJoystick availability. */
+#include "mui_plug.h"
 #include "mui_util.h"
 #include "datamap.h"
 #include "help.h"
@@ -118,23 +119,18 @@ b) Exit the dialog.
 #include "winutf8.h"
 #include "directories.h"
 #include "sound/samples.h"
+#include "modules/font/font_module.h"
+#include "modules/input/input_module.h"
+#include "modules/monitor/monitor_module.h"
 
-#ifdef _MSC_VER
-#define snprintf _snprintf
-#endif
-
-#include "newuires.h"
 #include "properties.h"
 #include "drivenum.h"
-#include "machine/ram.h"
 #include <shlwapi.h>
+#include "corestr.h"
 
-
-#if defined(__GNUC__)
-/* fix warning: cast does not match function type */
-#undef  PropSheet_GetTabControl
-#define PropSheet_GetTabControl(d) (HWND)(LRESULT)(int)SendMessage((d),PSM_GETTABCONTROL,0,0)
-#endif /* defined(__GNUC__) */
+#ifdef MESS
+#include "messui.h"
+#endif
 
 /***************************************************************
  * Imported function prototypes
@@ -193,8 +189,8 @@ static HBRUSH hBkBrush;
 #ifdef MESS
 static BOOL DirListReadControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name);
 static BOOL DirListPopulateControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name);
-static BOOL RamPopulateControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name);
 extern BOOL BrowseForDirectory(HWND hwnd, LPCTSTR pStartDir, TCHAR* pResult);
+bool m_swpath_changed = 0;
 #endif
 
 /**************************************************************
@@ -207,18 +203,21 @@ extern BOOL BrowseForDirectory(HWND hwnd, LPCTSTR pStartDir, TCHAR* pResult);
 #define MAX_SCREENS 4
 #endif
 
-windows_options m_OrigOpts, m_DefaultOpts, m_CurrentOpts;
+#define MAX_PLUGINS 32
+windows_options m_CurrentOpts;
 static datamap *properties_datamap;
 
 static int  g_nGame            = 0;
 static int  g_nFolder          = 0;
-static int  g_nFolderGame      = 0;
+//static int  g_nFolderGame      = 0;
 static int m_currScreen = -1;
 static OPTIONS_TYPE g_nPropertyMode = OPTIONS_GAME;
-static BOOL  g_bAutoAspect[MAX_SCREENS+1] = {false, false, false, false, false}; // state of tick on keep-aspect checkbox on "Screen" pane, per screen
+static BOOL  g_bAutoAspect[MAX_SCREENS+1] = { }; // state of tick on keep-aspect checkbox on "Screen" pane, per screen
 static BOOL  g_bAutoSnapSize = false;
 static HICON g_hIcon = NULL;
-std::vector<string> plugin_names(32);
+std::vector<string> plugin_names(MAX_PLUGINS);  // All possible plugins
+std::string plugin_chosen; // Plugins in the string list
+
 
 /* Property sheets */
 
@@ -267,11 +266,12 @@ const DUALCOMBOSTR m_cb_Video[] =
 
 const DUALCOMBOSTR m_cb_Sound[] =
 {
-	{ TEXT("None"),                  "none"    },
-	{ TEXT("Auto"),                  "auto"    },
-	{ TEXT("DirectSound"),           "dsound"  },
-	{ TEXT("PortAudio"),             "portaudio" },
-	{ TEXT("XAudio2 (Win10 only)"),  "xaudio2" },     // win10 only
+	{ TEXT("None"),             "none"    },
+	{ TEXT("Auto"),             "auto"    },
+	{ TEXT("DirectSound"),      "dsound"  },
+	{ TEXT("PortAudio"),        "portaudio" },
+	{ TEXT("Wasapi"),           "wasapi" },
+	{ TEXT("XAudio2"),          "xaudio2" },
 };
 #define NUMSOUND (sizeof(m_cb_Sound) / sizeof(m_cb_Sound[0]))
 
@@ -393,11 +393,11 @@ const DUALCOMBOSTR m_cb_BGFXBackend[] =
 	{ TEXT("Auto"),                "auto"   },
 	{ TEXT("DirectX9"),            "dx9"    },
 	{ TEXT("DirectX11"),           "dx11"   },
-	{ TEXT("DirectX12 (Win10)"),   "dx12"   },
+	{ TEXT("DirectX12"),           "dx12"   },
 	{ TEXT("GLES"),                "gles"   },
 	{ TEXT("GLSL"),                "glsl"   },
-	{ TEXT("Metal (Win10)"),       "metal"  },
-	{ TEXT("Vulkan (Win10)"),      "vulkan" },
+	{ TEXT("Metal"),               "metal"  },
+	{ TEXT("Vulkan"),              "vulkan" },
 };
 #define NUMBGFXBACKEND (sizeof(m_cb_BGFXBackend) / sizeof(m_cb_BGFXBackend[0]))
 
@@ -486,21 +486,17 @@ void InitDefaultPropertyPage(HINSTANCE hInst, HWND hWnd)
 {
 	// clear globals
 	g_nGame = GLOBAL_OPTIONS;
-//	windows_options dummy;
-//	OptionsCopy(dummy,m_DefaultOpts);
-//	OptionsCopy(dummy,m_OrigOpts);
-//	OptionsCopy(dummy,m_CurrentOpts);
+	windows_options dummy;
+	OptionsCopy(dummy,m_CurrentOpts);
 
 	/* Get default options to populate property sheets */
 	load_options(m_CurrentOpts, OPTIONS_GLOBAL, g_nGame, 0);
-	load_options(m_OrigOpts, OPTIONS_GLOBAL, g_nGame, 0);
-	load_options(m_DefaultOpts, OPTIONS_GLOBAL, -2, 0);
 
 	g_nPropertyMode = OPTIONS_GLOBAL;
 	BuildDataMap();
 
 	PROPSHEETHEADER pshead;
-	ZeroMemory(&pshead, sizeof(pshead));
+	SecureZeroMemory(&pshead, sizeof(pshead));
 
 	PROPSHEETPAGE   *pspage;
 	pspage = CreatePropSheetPages(hInst, true, -1, &pshead.nPages, false);
@@ -520,9 +516,9 @@ void InitDefaultPropertyPage(HINSTANCE hInst, HWND hWnd)
 	/* Create the Property sheet and display it */
 	if (PropertySheet(&pshead) == -1)
 	{
-		char temp[100];
+		char temp[100]{};
 		DWORD dwError = GetLastError();
-		sprintf(temp, "Property Sheet Error %d %X", (int)dwError, (int)dwError);
+		snprintf(temp, sizeof(temp), "Property Sheet Error %d %X", (int)dwError, (int)dwError);
 		win_message_box_utf8(0, temp, "Error", IDOK);
 	}
 
@@ -530,12 +526,12 @@ void InitDefaultPropertyPage(HINSTANCE hInst, HWND hWnd)
 }
 
 /* Initialize the property pages for anything but the Default option set */
-void InitPropertyPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYPE opt_type, int folder_id, int game_num)
+void InitPropertyPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYPE opt_type, int folder_id, int drvindex)
 {
-	InitPropertyPageToPage(hInst, hWnd, hIcon, opt_type, folder_id, game_num, PROPERTIES_PAGE);
+	InitPropertyPageToPage(hInst, hWnd, hIcon, opt_type, folder_id, drvindex, PROPERTIES_PAGE);
 }
 
-void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYPE opt_type, int folder_id, int game_num, int start_page )
+void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYPE opt_type, int folder_id, int drvindex, int start_page )
 {
 	if (highlight_brush == NULL)
 		highlight_brush = CreateSolidBrush(HIGHLIGHT_COLOR);
@@ -545,22 +541,15 @@ void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYP
 
 	// Initialize the options
 	windows_options dummy;
-	OptionsCopy(dummy,m_DefaultOpts);
-	OptionsCopy(dummy,m_OrigOpts);
 	OptionsCopy(dummy,m_CurrentOpts);
 
-	load_options(m_CurrentOpts, opt_type, game_num, 1);
-	load_options(m_OrigOpts, opt_type, game_num, 1);
-	if (game_num == GLOBAL_OPTIONS)
-		load_options(m_DefaultOpts, OPTIONS_GLOBAL, -2, 0); // base opts is the backup for global
-	else
-		load_options(m_DefaultOpts, OPTIONS_GLOBAL, -1, 0); // global is the backup for games
+	load_options(m_CurrentOpts, opt_type, drvindex, 1);
 
 	// Copy icon to use for the property pages
 	g_hIcon = CopyIcon(hIcon);
 
 	// These MUST be valid, they are used as indicies
-	g_nGame = game_num;
+	g_nGame = drvindex;
 	g_nFolder = folder_id;
 
 	// Keep track of OPTIONS_TYPE that was passed in.
@@ -577,8 +566,8 @@ void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYP
 	PROPSHEETPAGE *pspage;
 	if( OPTIONS_GAME == opt_type )
 	{
-		InitGameAudit(game_num);
-		pspage = CreatePropSheetPages(hInst, false, game_num, &pshead.nPages, true);
+		InitGameAudit(drvindex);
+		pspage = CreatePropSheetPages(hInst, false, drvindex, &pshead.nPages, true);
 	}
 	else
 		pspage = CreatePropSheetPages(hInst, false, -1, &pshead.nPages, false);
@@ -586,43 +575,45 @@ void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYP
 	if (!pspage)
 		return;
 
-	// Get the description use as the dialog caption.
-	TCHAR* t_description = 0;
+	// The title of the entire properties dialog (it mysteriously appends "Properties" to these descriptions).
+	string desc;
 	switch( opt_type )
 	{
 	case OPTIONS_GAME:
-		t_description = ui_wstring_from_utf8(ModifyThe(driver_list::driver(g_nGame).type.fullname()));
+		desc = ModifyThe(driver_list::driver(g_nGame).type.fullname());
 		break;
 	case OPTIONS_SOURCE:
-		t_description = ui_wstring_from_utf8(GetDriverFilename(g_nGame));
+		desc = GetDriverFilename(g_nGame);
 		break;
 	case OPTIONS_GLOBAL:
-		t_description = ui_wstring_from_utf8("Default Settings");
+		desc = "Default Settings";
 		break;
 	case OPTIONS_ARCADE:
-		t_description = ui_wstring_from_utf8("Default properties for games");
+		desc = "Arcade game";
 		break;
 	case OPTIONS_HORIZONTAL:
-		t_description = ui_wstring_from_utf8("Default properties for horizontal screens");
+		desc = "Horizontal screens";
 		break;
 	case OPTIONS_RASTER:
-		t_description = ui_wstring_from_utf8("Default properties for raster machines");
+		desc = "Raster machines";
 		break;
 	case OPTIONS_VECTOR:
-		t_description = ui_wstring_from_utf8("Default properties for vector machines");
+		desc = "Vector machines";
 		break;
 	case OPTIONS_VERTICAL:
-		t_description = ui_wstring_from_utf8("Default properties for vertical screens");
+		desc = "Vertical screens";
 		break;
 	default:
 		return;
 	}
-	// If we have no description, return.
-	if( !t_description )
+
+	if (desc.empty())
 		return;
 
+	std::wstring t_description = ui_to_utf16(desc);
+
 	/* Fill in the property sheet header */
-	pshead.pszCaption = t_description;
+	pshead.pszCaption = t_description.c_str();
 	pshead.hwndParent = hWnd;
 	pshead.dwSize     = sizeof(PROPSHEETHEADER);
 	pshead.dwFlags    = PSH_PROPSHEETPAGE | PSH_USEICONID | PSH_PROPTITLE;
@@ -634,13 +625,12 @@ void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYP
 	/* Create the Property sheet and display it */
 	if (PropertySheet(&pshead) == -1)
 	{
-		char temp[100];
+		char temp[100]{};
 		DWORD dwError = GetLastError();
-		sprintf(temp, "Property Sheet Error %d %X", (int)dwError, (int)dwError);
+		snprintf(temp, sizeof(temp), "Property Sheet Error %d %X", (int)dwError, (int)dwError);
 		win_message_box_utf8(0, temp, "Error", IDOK);
 	}
 
-	free(t_description);
 	free(pspage);
 }
 
@@ -650,106 +640,120 @@ void InitPropertyPageToPage(HINSTANCE hInst, HWND hWnd, HICON hIcon, OPTIONS_TYP
  *********************************************************************/
 
 /* Build CPU info string */
-static char *GameInfoCPU(int nIndex)
+static char *GameInfoCPU(int drvindex)
 {
-	machine_config config(driver_list::driver(nIndex), MameUIGlobal());
+	static char buf[512]{};
+	if (drvindex < 0)
+		return buf;
+
+	machine_config config(driver_list::driver(drvindex), MameUIGlobal());
 	execute_interface_enumerator cpuiter(config.root_device());
 	std::unordered_set<std::string> exectags;
-	static char buffer[1024];
-
-	memset(&buffer, 0, sizeof(buffer));
+	int len = 0;
+	int bufsize = sizeof(buf);
 
 	for (device_execute_interface &exec : cpuiter)
 	{
 		if (!exectags.insert(exec.device().tag()).second)
 			continue;
 
-		char temp[300];
 		int count = 1;
 		int clock = exec.device().clock();
 		const char *name = exec.device().name();
 
 		for (device_execute_interface &scan : cpuiter)
-		{
 			if (exec.device().type() == scan.device().type() && strcmp(name, scan.device().name()) == 0 && clock == scan.device().clock())
 				if (exectags.insert(scan.device().tag()).second)
 					count++;
-		}
 
 		if (count > 1)
-		{
-			snprintf(temp, std::size(temp), "%d x ", count);
-			strcat(buffer, temp);
-		}
+			if (len < bufsize)
+				len += snprintf(buf + len, bufsize - len, "%d x ", count);
 
 		if (clock >= 1000000)
-			snprintf(temp, std::size(temp), "%s %d.%06d MHz\r\n", name, clock / 1000000, clock % 1000000);
+		{
+			if (len < bufsize)
+				len += snprintf(buf + len, bufsize - len, "%s %d.%06d MHz\n", name, clock / 1000000, clock % 1000000);
+		}
 		else
-			snprintf(temp, std::size(temp), "%s %d.%03d kHz\r\n", name, clock / 1000, clock % 1000);
-
-		strcat(buffer, temp);
+		{
+			if (len < bufsize)
+				len += snprintf(buf + len, bufsize - len, "%s %d.%03d kHz\n", name, clock / 1000, clock % 1000);
+		}
 	}
 
-	return buffer;
+	return buf;
 }
 
 /* Build Sound system info string */
-static char *GameInfoSound(int nIndex)
+static char *GameInfoSound(int drvindex)
 {
-	machine_config config(driver_list::driver(nIndex), MameUIGlobal());
+	static char buf[512]{};
+	if (drvindex < 0)
+		return buf;
+
+	machine_config config(driver_list::driver(drvindex), MameUIGlobal());
 	sound_interface_enumerator sounditer(config.root_device());
 	std::unordered_set<std::string> soundtags;
-	static char buffer[1024];
-
-	memset(&buffer, 0, sizeof(buffer));
+	bool has_sound = false;
+	int len = 0;
+	int bufsize = sizeof(buf);
 
 	for (device_sound_interface &sound : sounditer)
 	{
 		if (!soundtags.insert(sound.device().tag()).second)
-				continue;
+			continue;
 
-		char temp[300];
+		has_sound = true;
 		int count = 1;
 		int clock = sound.device().clock();
 		const char *name = sound.device().name();
 
 		for (device_sound_interface &scan : sounditer)
-		{
 			if (sound.device().type() == scan.device().type() && strcmp(name, scan.device().name()) == 0 && clock == scan.device().clock())
 				if (soundtags.insert(scan.device().tag()).second)
 					count++;
-		}
 
 		if (count > 1)
-		{
-			snprintf(temp, std::size(temp), "%d x ", count);
-			strcat(buffer, temp);
-		}
+			if (len < bufsize)
+				len += snprintf(buf + len, bufsize - len, "%d x ", count);
 
-		strcat(buffer, name);
+		if (len < bufsize)
+			len += snprintf(buf + len, bufsize - len, "%s", name);
 
 		if (clock)
 		{
 			if (clock >= 1000000)
-				snprintf(temp, std::size(temp), " %d.%06d MHz", clock / 1000000, clock % 1000000);
+			{
+				if (len < bufsize)
+					len += snprintf(buf + len, bufsize - len, " %d.%06d MHz", clock / 1000000, clock % 1000000);
+			}
 			else
-				snprintf(temp, std::size(temp), " %d.%03d kHz", clock / 1000, clock % 1000);
-
-			strcat(buffer, temp);
+			{
+				if (len < bufsize)
+					len += snprintf(buf + len, bufsize - len, " %d.%03d kHz", clock / 1000, clock % 1000);
+			}
 		}
 
-		strcat(buffer, "\r\n");
+		if (len < bufsize)
+			len += snprintf(buf + len, bufsize - len, "\r\n");
 	}
+	if (!has_sound)
+		strcpy(buf, "No Sound");
 
-	return buffer;
+	return buf;
 }
 
 /* Build Display info string */
-static char *GameInfoScreen(UINT nIndex)
+static char *GameInfoScreen(int drvindex)
 {
-	static char buf[2048];
-	machine_config config(driver_list::driver(nIndex),m_CurrentOpts);
-	memset(buf, '\0', 2048);
+	static char buf[500]{};
+	if (drvindex < 0)
+		return buf;
+
+	machine_config config(driver_list::driver(drvindex),m_CurrentOpts);
+	int len = 0;
+	int bufsize = sizeof(buf);
 
 	if (isDriverVector(&config))
 		strcpy(buf, "Vector Game");
@@ -763,24 +767,22 @@ static char *GameInfoScreen(UINT nIndex)
 		{
 			for (screen_device &screen : screen_device_enumerator(config.root_device()))
 			{
-				char tmpbuf[2048];
 				const rectangle &visarea = screen.visible_area();
 
-				if (BIT(GetDriverCacheLower(nIndex), 2)) //ORIENTATION_SWAP_XY
+				if (BIT(GetDriverCacheLower(drvindex), 2)) //ORIENTATION_SWAP_XY
 				{
-					sprintf(tmpbuf,"%d x %d (V) %f Hz\n",
+					len += snprintf(buf + len, bufsize - len, "%d x %d (V) %f Hz\n",
 							visarea.max_y - visarea.min_y + 1,
 							visarea.max_x - visarea.min_x + 1,
-							ATTOSECONDS_TO_HZ(screen.refresh_attoseconds()));
+							screen.frame_period().as_hz());
 				}
 				else
 				{
-					sprintf(tmpbuf,"%d x %d (H) %f Hz\n",
+					len += snprintf(buf + len, bufsize - len, "%d x %d (H) %f Hz\n",
 							visarea.max_x - visarea.min_x + 1,
 							visarea.max_y - visarea.min_y + 1,
-							ATTOSECONDS_TO_HZ(screen.refresh_attoseconds()));
+							screen.frame_period().as_hz());
 				}
-				strcat(buf, tmpbuf);
 			}
 		}
 	}
@@ -788,251 +790,114 @@ static char *GameInfoScreen(UINT nIndex)
 }
 
 
-/* Build game status string */
-const char *GameInfoStatus(int driver_index, BOOL bRomStatus)
+// Build game status string
+// winui just gets the working/non-working line; info property sheet gets all
+const char *GameInfoStatus(int driver_index, BOOL full_report)
 {
-	static char buffer[2048];
-	memset(buffer,0,sizeof(char)*2048);
+	static char buffer[2048]{};
+	memset(buffer,0,sizeof(char)*sizeof(buffer));
 	if (driver_index < 0)
 		return buffer;
 
-	int audit_result = GetRomAuditResults(driver_index);
-	uint32_t cache = GetDriverCacheLower(driver_index);
-	if ( bRomStatus )
-	{
-		if (IsAuditResultKnown(audit_result) == false)
-			strcpy(buffer, "Unknown");
-		else
-		if (IsAuditResultYes(audit_result))
-		{
-			if (DriverIsBroken(driver_index))
-			{
-				strcpy(buffer, "Not working");
-
-				if (BIT(cache, 22))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game protection isn't fully emulated");
-				}
-				if (BIT(cache, 21))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Colors are completely wrong");
-				}
-				if (BIT(cache, 20))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Colors aren't 100% accurate");
-				}
-				if (BIT(cache, 18))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Video emulation isn't 100% accurate");
-				}
-				if (BIT(cache, 17))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game lacks sound");
-				}
-				if (BIT(cache, 16))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Sound emulation isn't 100% accurate");
-				}
-				if (BIT(cache, 8))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Screen flipping is not supported");
-				}
-				if (BIT(cache, 10))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game requires artwork");
-				}
-			}
-			else
-			{
-				strcpy(buffer, "Working");
-
-				if (BIT(cache, 22))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game protection isn't fully emulated");
-				}
-				if (BIT(cache, 21))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Colors are completely wrong");
-				}
-				if (BIT(cache, 20))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Colors aren't 100% accurate");
-				}
-				if (BIT(cache, 18))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Video emulation isn't 100% accurate");
-				}
-				if (BIT(cache, 17))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game lacks sound");
-				}
-				if (BIT(cache, 16))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Sound emulation isn't 100% accurate");
-				}
-				if (BIT(cache, 8))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Screen flipping is not supported");
-				}
-				if (BIT(cache, 10))
-				{
-					if (*buffer != '\0')
-						strcat(buffer, "\r\n");
-					strcat(buffer, "Game requires artwork");
-				}
-			}
-		}
-		else
-			// audit result is no
-			strcpy(buffer, "BIOS missing");
-	}
+	string buf;
+	if (DriverIsBroken(driver_index))
+		buf = "Not working\n";
 	else
+		buf = "Working\n";
+
+	//if (full_report)
 	{
-		//Just show the emulation flags
-		if (DriverIsBroken(driver_index))
-			strcpy(buffer, "Not working");
-		else
-			strcpy(buffer, "Working");
+		uint32_t cache = GetDriverCacheLower(driver_index);
 
 		if (BIT(cache, 22))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Game protection isn't fully emulated");
-		}
+			buf.append("Game protection isn't fully emulated\n");
+
 		if (BIT(cache, 21))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Colors are completely wrong");
-		}
+			buf.append("Colours are completely wrong\n");
+
 		if (BIT(cache, 20))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Colors aren't 100% accurate");
-		}
+			buf.append("Colours aren't 100% accurate\n");
+
 		if (BIT(cache, 18))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Video emulation isn't 100% accurate");
-		}
+			buf.append("Video emulation isn't 100% accurate\n");
+
 		if (BIT(cache, 17))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Game lacks sound");
-		}
+			buf.append("Game lacks sound\n");
+
 		if (BIT(cache, 16))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Sound emulation isn't 100% accurate");
-		}
+			buf.append("Sound emulation isn't 100% accurate\n");
+
 		if (BIT(cache, 8))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Screen flipping is not supported");
-		}
+			buf.append("Screen flipping is not supported\n");
+
 		if (BIT(cache, 10))
-		{
-			if (*buffer != '\0')
-				strcat(buffer, "\r\n");
-			strcat(buffer, "Game requires artwork");
-		}
+			buf.append("Game requires artwork\n");
 	}
+
+	snprintf(buffer, sizeof(buffer), "%s", buf.c_str());
 	return buffer;
 }
 
 /* Build game manufacturer string */
-static char *GameInfoManufactured(UINT nIndex)
+static char *GameInfoManufactured(int drvindex)
 {
-	static char buffer[1024];
+	static char buf[128]{};
 
-	snprintf(buffer,sizeof(buffer),"%s %s",driver_list::driver(nIndex).year,driver_list::driver(nIndex).manufacturer);
-	return buffer;
+	if (drvindex >= 0)
+		snprintf(buf, sizeof(buf), "%s %s",
+			driver_list::driver(drvindex).year,
+			driver_list::driver(drvindex).manufacturer);
+
+	return buf;
 }
 
-/* Build Game title string */
-char *GameInfoTitle(OPTIONS_TYPE opt_type, UINT nIndex)
+// The title on each property page
+char *GameInfoTitle(OPTIONS_TYPE opt_type, int drvindex)
 {
-	static char buf[1024];
+	static char buf[128]{};
 
 	switch (opt_type)
 	{
-	case OPTIONS_GLOBAL:
-		strcpy(buf, "Global game options\nDefault options used by all games");
-		break;
-	case OPTIONS_SOURCE:
-		sprintf(buf, "Properties for machines in %s", GetDriverFilename(nIndex));
-		break;
-	case OPTIONS_ARCADE:
-		sprintf(buf, "Default properties for games");
-		break;
-	case OPTIONS_HORIZONTAL:
-		sprintf(buf, "Default properties for horizontal screens");
-		break;
-	case OPTIONS_RASTER:
-		sprintf(buf, "Default properties for raster machines");
-		break;
-	case OPTIONS_VECTOR:
-		sprintf(buf, "Default properties for vector machines");
-		break;
-	case OPTIONS_VERTICAL:
-		sprintf(buf, "Default properties for vertical screens");
-		break;
-	case OPTIONS_GAME:
-		sprintf(buf, "%s\n\"%s\"", ModifyThe(driver_list::driver(nIndex).type.fullname()), driver_list::driver(nIndex).name);
-	default:
-		break;
+		case OPTIONS_GLOBAL:
+			strcpy(buf, "Global game options\nDefault options used by all games");
+			break;
+		case OPTIONS_SOURCE:
+			if (drvindex >= 0)
+				snprintf(buf, sizeof(buf), "Properties for machines in %s", GetDriverFilename(drvindex));
+			break;
+		case OPTIONS_ARCADE:
+			strcpy(buf, "Default properties for arcade games");
+			break;
+		case OPTIONS_HORIZONTAL:
+			strcpy(buf, "Default properties for horizontal screens");
+			break;
+		case OPTIONS_RASTER:
+			strcpy(buf, "Default properties for raster machines");
+			break;
+		case OPTIONS_VECTOR:
+			strcpy(buf, "Default properties for vector machines");
+			break;
+		case OPTIONS_VERTICAL:
+			strcpy(buf, "Default properties for vertical screens");
+			break;
+		case OPTIONS_GAME:
+			if (drvindex >= 0)
+				snprintf(buf, sizeof(buf), "%s\n\"%s\"", ModifyThe(driver_list::driver(drvindex).type.fullname()), driver_list::driver(drvindex).name);
+		default:
+			break;
 	}
 	return buf;
 }
 
 /* Build game clone information string */
-static char *GameInfoCloneOf(UINT nIndex)
+static char *GameInfoCloneOf(int drvindex)
 {
-	static char buf[1024];
-	int nParentIndex= -1;
+	static char buf[1024]{};
 
-	buf[0] = '\0';
-
-	if (DriverIsClone(nIndex))
+	if ((drvindex >= 0) && DriverIsClone(drvindex))
 	{
-		nParentIndex = GetParentIndex(&driver_list::driver(nIndex));
-		sprintf(buf, "%s - \"%s\"",
+		int nParentIndex = GetParentIndex(&driver_list::driver(drvindex));
+		snprintf(buf, sizeof(buf), "%s - \"%s\"",
 			ConvertAmpersandString(ModifyThe(driver_list::driver(nParentIndex).type.fullname())),
 			driver_list::driver(nParentIndex).name);
 	}
@@ -1040,9 +905,9 @@ static char *GameInfoCloneOf(UINT nIndex)
 	return buf;
 }
 
-static const char * GameInfoSource(UINT nIndex)
+static const char * GameInfoSource(UINT drvindex)
 {
-	return GetDriverFilename(nIndex);
+	return GetDriverFilename(drvindex);
 }
 
 /* Handle the information property page */
@@ -1064,7 +929,7 @@ HWND hWnd;
 
 		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_TITLE),         GameInfoTitle(g_nPropertyMode, g_nGame));
 		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_MANUFACTURED),  GameInfoManufactured(g_nGame));
-		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_STATUS),        GameInfoStatus(g_nGame, false));
+		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_STATUS),        GameInfoStatus(g_nGame, true));
 		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_CPU),           GameInfoCPU(g_nGame));
 		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_SOUND),         GameInfoSound(g_nGame));
 		win_set_window_text_utf8(GetDlgItem(hDlg, IDC_PROP_SCREEN),        GameInfoScreen(g_nGame));
@@ -1087,7 +952,7 @@ HWND hWnd;
 /* Handle all options property pages */
 INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
-	BOOL g_bUseDefaults = false; //, g_bReset = false;
+//	BOOL g_bUseDefaults = false; //, g_bReset = false;
 
 	switch (Msg)
 	{
@@ -1099,25 +964,13 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 
 		UpdateProperties(hDlg, properties_datamap, m_CurrentOpts);
 
-		g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//		g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-
-		// Default button doesn't exist on Default settings
-		if (g_nGame == GLOBAL_OPTIONS)
-			ShowWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), SW_HIDE);
-		else
-			EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-
-		// Setup Reset button
-//		EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
 		ShowWindow(hDlg, SW_SHOW);
-//		PropSheet_Changed(GetParent(hDlg), hDlg);
+		PropSheet_Changed(GetParent(hDlg), hDlg);
 		return 1;
 
 	case WM_HSCROLL:
 		/* slider changed */
 		HANDLE_WM_HSCROLL(hDlg, wParam, lParam, OptOnHScroll);
-		EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), true);
 
 		// Enable Apply button
 		PropSheet_Changed(GetParent(hDlg), hDlg);
@@ -1138,7 +991,7 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 			WORD wNotifyCode = GET_WM_COMMAND_CMD(wParam, lParam);
 			BOOL changed     = false;
 			int nCurSelection = 0;
-			TCHAR szClass[256];
+			TCHAR szClass[256]{};
 
 			switch (wID)
 			{
@@ -1240,55 +1093,12 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 				changed = ResetLUAScript(hDlg);
 				break;
 
-			case IDC_SELECT_PLUGIN:
+			case IDC_PLUGIN_SELECT:
 				changed = SelectPlugins(hDlg);
 				break;
 
-			case IDC_RESET_PLUGIN:
+			case IDC_PLUGIN_RESET:
 				changed = ResetPlugins(hDlg);
-				break;
-
-//			case IDC_PROP_RESET:
-				// RESET Button - Only do it if mouse-clicked
-//				if (wNotifyCode != BN_CLICKED)
-//					break;
-
-				// Change settings in property sheets back to original
-//				UpdateProperties(hDlg, properties_datamap, m_OrigOpts);
-				// The original options become the current options.
-//				UpdateOptions(hDlg, properties_datamap, m_CurrentOpts);
-
-//				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				// Turn off Apply
-//				PropSheet_UnChanged(GetParent(hDlg), hDlg);
-//				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
-//				break;
-
-			case IDC_USE_DEFAULT:
-				// DEFAULT Button - Only do it if mouse-clicked
-				if (wNotifyCode != BN_CLICKED)
-					break;
-
-				// Change settings to be the same as mame.ini
-				UpdateProperties(hDlg, properties_datamap, m_DefaultOpts);
-				// The original options become the current options.
-				UpdateOptions(hDlg, properties_datamap, m_CurrentOpts);
-
-				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				// Enable/Disable the Reset to Defaults button
-				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
-				// Tell the dialog to enable/disable the apply button.
-//				if (g_nGame != GLOBAL_OPTIONS)
-//				{
-//					if (g_bReset)
-						PropSheet_Changed(GetParent(hDlg), hDlg);
-//					else
-//						PropSheet_UnChanged(GetParent(hDlg), hDlg);
-//				}
 				break;
 
 				// MSH 20070813 - Update all related controls
@@ -1326,15 +1136,17 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 				*************************************  */
 				}
 				break;
+
 			default:
 #ifdef MESS
-			if (MessPropertiesCommand(hDlg, wNotifyCode, wID, &changed))
-				// To Do: add a hook to MessReadMountedSoftware(drvindex); so the software will update itself when the folder is configured
+				if (MessPropertiesCommand(hDlg, wNotifyCode, wID, &changed))
+				{
+					m_swpath_changed = true;
 					break;
+				}
 #endif
 
-				// use default behavior; try to get the result out of the datamap if
-				// appropriate
+				// use default behavior; try to get the result out of the datamap if appropriate
 				GetClassName(hWndCtrl, szClass, std::size(szClass));
 				if (!_tcscmp(szClass, WC_COMBOBOX))
 				{
@@ -1350,16 +1162,12 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 				break;
 			}
 
-			if (changed == true)
+			if (changed)
 			{
 				// make sure everything's copied over, to determine what's changed
 				UpdateOptions(hDlg, properties_datamap, m_CurrentOpts);
 				// enable the apply button
 				PropSheet_Changed(GetParent(hDlg), hDlg);
-				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
 			}
 		}
 		break;
@@ -1376,10 +1184,6 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 			case PSN_SETACTIVE:
 				/* Initialize the controls. */
 				UpdateProperties(hDlg, properties_datamap, m_CurrentOpts);
-				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
 				break;
 
 			case PSN_APPLY:
@@ -1392,18 +1196,27 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 					//return true;
 				//}
 
+				// Process plugins, stop stupid compile error
+				// Vector.ini etc are always blanked out, not saved.
+				{
+					std::string plugin, noplugin;
+					if (g_nGame < 0)
+					{
+						if (g_nPropertyMode == OPTIONS_GLOBAL)
+							std::tie(plugin, noplugin) = mui_plugin_options().split_into_lists(m_CurrentOpts, -1, plugin_chosen);
+					}
+					else
+						std::tie(plugin, noplugin) = mui_plugin_options().split_into_lists(m_CurrentOpts, g_nGame, plugin_chosen);
+
+					emu_set_value(m_CurrentOpts, OPTION_PLUGIN, plugin);
+					emu_set_value(m_CurrentOpts, OPTION_NO_PLUGIN, noplugin);
+				}
+
 				// Read the datamap
 				UpdateOptions(hDlg, properties_datamap, m_CurrentOpts);
-				// The current options become the original options.
-				UpdateOptions(hDlg, properties_datamap, m_OrigOpts);
 
 				// Repopulate the controls?  WTF?  We just read them, they should be fine.
 				UpdateProperties(hDlg, properties_datamap, m_CurrentOpts);
-
-				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
 
 				// Save the current options
 				save_options(m_CurrentOpts, g_nPropertyMode, g_nGame);
@@ -1411,31 +1224,22 @@ INT_PTR CALLBACK GameOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lPar
 				// Disable apply button
 				PropSheet_UnChanged(GetParent(hDlg), hDlg);
 				SetWindowLongPtr(hDlg, DWLP_MSGRESULT, PSNRET_NOERROR);
-
+#ifdef MESS
+				if (m_swpath_changed)
+				{
+					MessUpdateSoftwareList();
+					m_swpath_changed = false;
+				}
+#endif
 				return true;
 
 			case PSN_KILLACTIVE:
 				/* Save Changes to the options here. */
 				UpdateOptions(hDlg, properties_datamap, m_CurrentOpts);
-				// Determine button states.
-				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
 
 				ResetDataMap(hDlg);
 				SetWindowLongPtr(hDlg, DWLP_MSGRESULT, false);
 				return 1;
-
-//			case PSN_RESET:
-				// Reset to the original values. Disregard changes
-				//m_CurrentOpts = m_OrigOpts;
-//				g_bUseDefaults = AreOptionsEqual(m_CurrentOpts, m_DefaultOpts) ? false : true;
-//				g_bReset = AreOptionsEqual(m_CurrentOpts, m_OrigOpts) ? false : true;
-//				EnableWindow(GetDlgItem(hDlg, IDC_USE_DEFAULT), g_bUseDefaults);
-//				EnableWindow(GetDlgItem(hDlg, IDC_PROP_RESET), g_bReset);
-//				SetWindowLongPtr(hDlg, DWLP_MSGRESULT, false);
-//				break;
 
 			case PSN_HELP:
 				// User wants help for this property page
@@ -1482,7 +1286,7 @@ static void PropToOptions(HWND hWnd, windows_options &o)
 		else
 		{
 			int n = 0, d = 0;
-			TCHAR buffer[200];
+			TCHAR buffer[200]{};
 
 			Edit_GetText(hCtrl, buffer, std::size(buffer));
 			_stscanf(buffer,TEXT("%d"),&n);
@@ -1513,7 +1317,7 @@ static void PropToOptions(HWND hWnd, windows_options &o)
 		else
 		{
 			int width = 0, height = 0;
-			TCHAR buffer[200];
+			TCHAR buffer[200]{};
 
 			Edit_GetText(hCtrl, buffer, std::size(buffer));
 			_stscanf(buffer, TEXT("%d"), &width);
@@ -1556,9 +1360,9 @@ static void UpdateProperties(HWND hDlg, datamap *map, windows_options &o)
 	In both cases, the vsh is entered into the ini-file, but without the extension */
 static bool SelectGLSLShader(HWND hWnd, int slot, BOOL is_scr)
 {
-	char filename[MAX_PATH];
+	char filename[MAX_PATH]{};
 	bool changed = false;
-	char shader[32];
+	char shader[32]{};
 	int dialog;
 
 	*filename = 0;
@@ -1575,14 +1379,10 @@ static bool SelectGLSLShader(HWND hWnd, int slot, BOOL is_scr)
 
 	if (CommonFileDialog(GetOpenFileName, filename, FILETYPE_SHADER_FILES))
 	{
-		char option[MAX_PATH];
-		wchar_t *t_filename = ui_wstring_from_utf8(filename);
-		wchar_t *tempname = PathFindFileName(t_filename);
-		PathRemoveExtension(tempname);
-		char *optname = ui_utf8_from_wstring(tempname);
-		strcpy(option, optname);
-		free(t_filename);
-		free(optname);
+		char option[MAX_PATH]{};
+		wchar_t *tempname = PathFindFileName(ui_to_utf16(filename).c_str());
+		PathRemoveExtension(tempname); // this function wants wchar
+		snprintf(option, sizeof(option), "%s", ui_to_utf8(tempname).c_str());
 
 		if (strcmp(option, m_CurrentOpts.value(shader)))
 		{
@@ -1600,7 +1400,7 @@ static bool ResetGLSLShader(HWND hWnd, int slot, BOOL is_scr)
 {
 	bool changed = false;
 	const char *new_value = "none";
-	char option[32];
+	char option[32]{};
 	int dialog;
 
 	if (is_scr)
@@ -1630,7 +1430,7 @@ static void UpdateMameShader(HWND hWnd, int slot, windows_options &o)
 
 	if (hCtrl)
 	{
-		char option[32];
+		char option[32]{};
 		snprintf(option, std::size(option), "glsl_shader_mame%d", slot);
 		const char* value = o.value(option);
 
@@ -1647,7 +1447,7 @@ static void UpdateScreenShader(HWND hWnd, int slot, windows_options &o)
 
 	if (hCtrl)
 	{
-		char option[32];
+		char option[32]{};
 		snprintf(option, std::size(option), "glsl_shader_screen%d", slot);
 		const char* value = o.value(option);
 
@@ -1662,7 +1462,7 @@ static void UpdateScreenShader(HWND hWnd, int slot, windows_options &o)
 static void OptionsToProp(HWND hWnd, windows_options& o)
 {
 	HWND hCtrl2;
-	TCHAR buf[1024];
+	TCHAR buf[1024]{};
 	int  n = 0;
 	int  d = 0;
 	int  width = 0;
@@ -1792,11 +1592,7 @@ static void OptionsToProp(HWND hWnd, windows_options& o)
 	if (hCtrl)
 	{
 		c = emu_get_value(o, OPTION_JOYSTICK_MAP);
-
-		if (c.empty())
-			win_set_window_text_utf8(hCtrl, "Default");
-		else
-			win_set_window_text_utf8(hCtrl, c.c_str());
+		win_set_window_text_utf8(hCtrl, c.empty() ? "Default" : c.c_str());
 	}
 
 	hCtrl = GetDlgItem(hWnd, IDC_LUASCRIPT);
@@ -1810,28 +1606,61 @@ static void OptionsToProp(HWND hWnd, windows_options& o)
 		else
 		{
 			const char* script = c.c_str();
-			char buffer[260];
-			wchar_t *t_filename = ui_wstring_from_utf8(script);
-			wchar_t *tempname = PathFindFileName(t_filename);
+			char buffer[260]{};
+			wchar_t *tempname = PathFindFileName(ui_to_utf16(script).c_str());
 			PathRemoveExtension(tempname);
-			char *optname = ui_utf8_from_wstring(tempname);
-			strcpy(buffer, optname);
-			free(t_filename);
-			free(optname);
+			snprintf(buffer, sizeof(buffer), "%s", ui_to_utf8(tempname).c_str());
 			win_set_window_text_utf8(hCtrl, buffer);
 		}
 	}
 
-	hCtrl = GetDlgItem(hWnd, IDC_PLUGIN);
+	std::string cc;
+	hCtrl = GetDlgItem(hWnd, IDC_PLUGIN_LIST);    // The string list editbox of enabled plugins
 
 	if (hCtrl)
 	{
-		c = emu_get_value(o, OPTION_PLUGIN);
+		std::tie(c, cc) = mui_plugin_options().get_lists(o);
+		plugin_chosen = c;
+		win_set_window_text_utf8(hCtrl, c.empty() ? "None" : c.c_str());
+	}
 
-		if (c.empty())
-			win_set_window_text_utf8(hCtrl, "None");
-		else
-			win_set_window_text_utf8(hCtrl, c.c_str());
+	hCtrl = GetDlgItem(hWnd, IDC_PLUGIN_SELECT);   // The dropdown list of existing plugins
+
+	if (hCtrl)
+	{
+		(void)ComboBox_ResetContent(hCtrl);
+		const char* cclist = cc.c_str();
+		char* s = strdup(cclist);
+		if (!s)
+		{
+			printf("Out of memory in __FILE__ in __func__ at line __LINE__\n");
+			return;
+		}
+		int count = 0;
+		char* token = strtok(s, ",");
+
+		if (token != NULL)
+		{
+			while (token != NULL)
+			{
+				if (count < MAX_PLUGINS)
+					plugin_names[count] = token;
+				else
+					printf("Properties.cpp: MAX_PLUGINS < %d\n",count);
+
+				const TCHAR* t_s = ui_to_utf16(token).c_str();
+				if( t_s )
+				{
+					if (ComboBox_InsertString(hCtrl, count++, win_tstring_strdup(t_s)) == CB_ERR)
+					{
+						free(s);
+						return;
+					}
+				}
+				token = strtok(NULL, ",");
+			}
+		}
+		free(s);
 	}
 
 	hCtrl = GetDlgItem(hWnd, IDC_BGFX_CHAINS);
@@ -1839,11 +1668,7 @@ static void OptionsToProp(HWND hWnd, windows_options& o)
 	if (hCtrl)
 	{
 		c = emu_get_value(o, OSDOPTION_BGFX_SCREEN_CHAINS);
-
-		if (c.empty())
-			win_set_window_text_utf8(hCtrl, "Default");
-		else
-			win_set_window_text_utf8(hCtrl, c.c_str());
+		win_set_window_text_utf8(hCtrl, c.empty() ? "Default" : c.c_str());
 	}
 
 	/* snapshot size */
@@ -1974,7 +1799,6 @@ static void SetPropEnabledControls(HWND hWnd)
 			Button_Enable(GetDlgItem(hWnd,IDC_LIGHTGUN),false);
 			use_lightgun = Button_GetCheck(GetDlgItem(hWnd,IDC_USE_MOUSE));
 			Button_Enable(GetDlgItem(hWnd,IDC_DUAL_LIGHTGUN),false);
-			Button_Enable(GetDlgItem(hWnd,IDC_RELOAD),use_lightgun);
 //		}
 //		else
 //		{
@@ -1983,14 +1807,12 @@ static void SetPropEnabledControls(HWND hWnd)
 //			Button_Enable(GetDlgItem(hWnd,IDC_LIGHTGUN),true);
 //			use_lightgun = Button_GetCheck(GetDlgItem(hWnd,IDC_LIGHTGUN));
 //			Button_Enable(GetDlgItem(hWnd,IDC_DUAL_LIGHTGUN),use_lightgun);
-//			Button_Enable(GetDlgItem(hWnd,IDC_RELOAD),use_lightgun);
 //		}
 	}
 	else
 	{
 		Button_Enable(GetDlgItem(hWnd,IDC_LIGHTGUN),false);
 		Button_Enable(GetDlgItem(hWnd,IDC_DUAL_LIGHTGUN),false);
-		Button_Enable(GetDlgItem(hWnd,IDC_RELOAD),false);
 	}
 
 
@@ -2084,9 +1906,8 @@ static BOOL ScreenReadControl(datamap *map, HWND dialog, HWND control, windows_o
 		screen_option_name += std::to_string(m_currScreen);
 	int screen_option_index = ComboBox_GetCurSel(control);
 	TCHAR *screen_option_value = (TCHAR*) ComboBox_GetItemData(control, screen_option_index);
-	char *op_val = ui_utf8_from_wstring(screen_option_value);
+	const char *op_val = ui_to_utf8(screen_option_value).c_str();
 	emu_set_value(o, screen_option_name, op_val);
-	free(op_val);
 	return false;
 }
 
@@ -2098,12 +1919,11 @@ static BOOL ScreenPopulateControl(datamap *map, HWND dialog, HWND control, windo
 	DISPLAY_DEVICE dd;
 	int i = 0;
 	int nSelection = 0;
-	TCHAR* t_option = 0;
 
 	/* Remove all items in the list. */
 	ComboBox_ResetContent(control);
 	ComboBox_InsertString(control, 0, TEXT("Auto"));
-	ComboBox_SetItemData(control, 0, (void*)ui_wstring_from_utf8("auto"));
+	ComboBox_SetItemData(control, 0, (void*)win_tstring_strdup(L"auto"));
 
 	//Dynamically populate it, by enumerating the Monitors
 	//iMonitors = GetSystemMetrics(SM_CMONITORS); // this gets the count of monitors attached
@@ -2121,12 +1941,11 @@ static BOOL ScreenPopulateControl(datamap *map, HWND dialog, HWND control, windo
 			if (m_currScreen >= 0)
 				screen_option += std::to_string(m_currScreen);
 			string screen = emu_get_value(o, screen_option);
-			t_option = ui_wstring_from_utf8(screen.c_str());
+			const wchar_t* t_option = ui_to_utf16(screen).c_str();
 			if( !t_option )
 				return false;
 			if (_tcscmp(t_option, dd.DeviceName) == 0)
 				nSelection = i+1;
-			free(t_option);
 		}
 	}
 	ComboBox_SetCurSel(control, nSelection);
@@ -2194,46 +2013,21 @@ static BOOL DefaultInputReadControl(datamap *map, HWND dialog, HWND control, win
 	return false;
 }
 
-wchar_t *win_wstring_from_utf8(const char *utf8string)
-{
-	// convert MAME string (UTF-8) to UTF-16
-	int char_count = MultiByteToWideChar(CP_UTF8, 0, utf8string, -1, nullptr, 0);
-	wchar_t *result = (wchar_t *)malloc(char_count * sizeof(*result));
-
-	if (result != nullptr)
-		MultiByteToWideChar(CP_UTF8, 0, utf8string, -1, result, char_count);
-
-	return result;
-}
-
-char *win_utf8_from_wstring(const wchar_t *wstring)
-{
-	// convert UTF-16 to MAME string (UTF-8)
-	int char_count = WideCharToMultiByte(CP_UTF8, 0, wstring, -1, nullptr, 0, nullptr, nullptr);
-	char *result = (char *)malloc(char_count * sizeof(*result));
-
-	if (result != nullptr)
-		WideCharToMultiByte(CP_UTF8, 0, wstring, -1, result, char_count, nullptr, nullptr);
-
-	return result;
-}
-
 HANDLE winui_find_first_file_utf8(const char* filename, WIN32_FIND_DATA *findfiledata)
 {
-	wchar_t *t_filename = win_wstring_from_utf8(filename);
+	const wchar_t *t_filename = ui_to_utf16(filename).c_str();
 
 	if (!t_filename)
 		return NULL;
 
 	HANDLE result = FindFirstFile(t_filename, findfiledata);
-	free(t_filename);
 	return result;
 }
 
 static BOOL DefaultInputPopulateControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name)
 {
 	WIN32_FIND_DATA FindFileData;
-	char path[MAX_PATH];
+	char path[MAX_PATH]{};
 	int selected = 0;
 	int index = 0;
 
@@ -2253,7 +2047,7 @@ static BOOL DefaultInputPopulateControl(datamap *map, HWND dialog, HWND control,
 		while (FindNextFile (hFind, &FindFileData) != 0)
 		{
 			// copy the filename
-			const char *root = win_utf8_from_wstring(FindFileData.cFileName);
+			char *root = ui_utf8_from_wstring(FindFileData.cFileName);
 			// find the extension
 			char *ext = strrchr(root, '.');
 
@@ -2270,7 +2064,7 @@ static BOOL DefaultInputPopulateControl(datamap *map, HWND dialog, HWND control,
 						selected = index;
 
 					// add it as an option
-					wchar_t *t_root = win_wstring_from_utf8(root);
+					wchar_t *t_root = ui_wstring_from_utf8(root);
 					ComboBox_InsertString(control, index, t_root);
 					ComboBox_SetItemData(control, index, root);
 					free(t_root);
@@ -2304,11 +2098,11 @@ static BOOL ResolutionReadControl(datamap *map, HWND dialog, HWND control, windo
 	HWND refresh_control = GetDlgItem(dialog, IDC_REFRESH);
 	HWND sizes_control = GetDlgItem(dialog, IDC_SIZES);
 	int width = 0, height = 0;
-	char option_value[256];
+	char option_value[256]{};
 
 	if (refresh_control && sizes_control)
 	{
-		TCHAR buffer[256];
+		TCHAR buffer[256]{};
 		ComboBox_GetText(sizes_control, buffer, std::size(buffer) - 1);
 		if (_stscanf(buffer, TEXT("%d x %d"), &width, &height) == 2)
 		{
@@ -2338,7 +2132,7 @@ static BOOL ResolutionPopulateControl(datamap *map, HWND dialog, HWND control_, 
 	int refresh_selection = 0;
 	string screen_option;
 	LPTSTR t_screen;
-	TCHAR buf[16];
+	TCHAR buf[16]{};
 	int i;
 	DEVMODE devmode;
 
@@ -2518,7 +2312,6 @@ static void BuildDataMap(void)
 	datamap_add(properties_datamap, IDC_STEADYKEY,				DM_BOOL,	OPTION_STEADYKEY);
 	datamap_add(properties_datamap, IDC_MULTIKEYBOARD,			DM_BOOL,	OPTION_MULTIKEYBOARD);
 	datamap_add(properties_datamap, IDC_MULTIMOUSE,				DM_BOOL,	OPTION_MULTIMOUSE);
-	datamap_add(properties_datamap, IDC_RELOAD,					DM_BOOL,	OPTION_OFFSCREEN_RELOAD);
 
 	datamap_add(properties_datamap, IDC_JDZ,					DM_FLOAT,	OPTION_JOYSTICK_DEADZONE);
 	datamap_add(properties_datamap, IDC_JDZDISP,				DM_FLOAT,	OPTION_JOYSTICK_DEADZONE);
@@ -2541,7 +2334,6 @@ static void BuildDataMap(void)
 	datamap_add(properties_datamap, IDC_PROV_JOYSTICK,			DM_STRING,	OSD_JOYSTICKINPUT_PROVIDER);
 	datamap_add(properties_datamap, IDC_PROV_LIGHTGUN,			DM_STRING,	OSD_LIGHTGUNINPUT_PROVIDER);
 	datamap_add(properties_datamap, IDC_PROV_MONITOR,			DM_STRING,	OSD_MONITOR_PROVIDER);
-	datamap_add(properties_datamap, IDC_PROV_OUTPUT,			DM_STRING,	OSD_OUTPUT_PROVIDER);
 
 	// core debugging options
 	datamap_add(properties_datamap, IDC_LOG,					DM_BOOL,	OPTION_LOG);
@@ -2556,10 +2348,11 @@ static void BuildDataMap(void)
 	datamap_add(properties_datamap, IDC_LUASCRIPT,				DM_STRING,	OPTION_AUTOBOOT_SCRIPT);
 	datamap_add(properties_datamap, IDC_BOOTDELAY,				DM_INT,		OPTION_AUTOBOOT_DELAY);
 	datamap_add(properties_datamap, IDC_BOOTDELAYDISP,			DM_INT,		OPTION_AUTOBOOT_DELAY);
-	datamap_add(properties_datamap, IDC_PLUGINS,				DM_BOOL,	OPTION_PLUGINS);
-	datamap_add(properties_datamap, IDC_PLUGIN,					DM_STRING,	OPTION_PLUGIN);
+	datamap_add(properties_datamap, IDC_PLUGIN_ENABLE,			DM_BOOL,	OPTION_PLUGINS);
+	datamap_add(properties_datamap, IDC_PLUGIN_LIST,			DM_STRING,	OPTION_PLUGIN);
 	datamap_add(properties_datamap, IDC_NVRAM_SAVE,				DM_BOOL,	OPTION_NVRAM_SAVE);
 	datamap_add(properties_datamap, IDC_REWIND,					DM_BOOL,	OPTION_REWIND);
+	//datamap_add(properties_datamap, IDC_DRC_CORE,				DM_BOOL,	OPTION_DRC);
 	datamap_add(properties_datamap, IDC_NATURAL,				DM_BOOL,	OPTION_NATURAL_KEYBOARD);
 	datamap_add(properties_datamap, IDC_HLSL_ON,				DM_BOOL,	WINOPTION_HLSL_ENABLE);
 	datamap_add(properties_datamap, IDC_SAVE_INI,				DM_BOOL,	OPTION_WRITECONFIG);
@@ -2638,16 +2431,11 @@ static void BuildDataMap(void)
 	datamap_add(properties_datamap, IDC_FSGAMMADISP,			DM_FLOAT,	WINOPTION_FULLSCREENGAMMA);
 
 	// windows sound options
-	datamap_add(properties_datamap, IDC_AUDIO_LATENCY,			DM_INT,		OSDOPTION_AUDIO_LATENCY);
-	datamap_add(properties_datamap, IDC_AUDIO_LATENCY_DISP,		DM_INT,		OSDOPTION_AUDIO_LATENCY);
-	datamap_add(properties_datamap, IDC_PORTAUDIO_LATENCY,		DM_FLOAT,	OSDOPTION_PA_LATENCY);
-	datamap_add(properties_datamap, IDC_PORTAUDIO_LATENCY_DISP,	DM_FLOAT,	OSDOPTION_PA_LATENCY);
+	datamap_add(properties_datamap, IDC_AUDIO_LATENCY,			DM_FLOAT,		OSDOPTION_AUDIO_LATENCY);
+	datamap_add(properties_datamap, IDC_AUDIO_LATENCY_DISP,		DM_FLOAT,		OSDOPTION_AUDIO_LATENCY);
 
 	// input device options
 	datamap_add(properties_datamap, IDC_DUAL_LIGHTGUN,			DM_BOOL,	WINOPTION_DUAL_LIGHTGUN);
-
-	// show menu
-//	datamap_add(properties_datamap, IDC_SHOW_MENU,				DM_BOOL,	WINOPTION_MENU);
 
 	// set up callbacks
 	datamap_set_callback(properties_datamap, IDC_ROTATE,		DCT_READ_CONTROL,		RotateReadControl);
@@ -2671,7 +2459,7 @@ static void BuildDataMap(void)
 
 	// formats
 	datamap_set_int_format(properties_datamap, IDC_VOLUMEDISP,			"%ddB");
-	datamap_set_int_format(properties_datamap, IDC_AUDIO_LATENCY_DISP,	"%d/5");
+	datamap_set_float_format(properties_datamap, IDC_AUDIO_LATENCY_DISP,	"%2.1f");
 	datamap_set_float_format(properties_datamap, IDC_BEAM_MINDISP,		"%3.2f");
 	datamap_set_float_format(properties_datamap, IDC_BEAM_MAXDISP,		"%3.2f");
 	datamap_set_float_format(properties_datamap, IDC_BEAM_INTENDISP,	"%3.2f");
@@ -2686,7 +2474,6 @@ static void BuildDataMap(void)
 	datamap_set_float_format(properties_datamap, IDC_JDZDISP,			"%3.2f");
 	datamap_set_float_format(properties_datamap, IDC_JSATDISP,			"%3.2f");
 	datamap_set_float_format(properties_datamap, IDC_SPEEDDISP,			"%3.1f");
-	datamap_set_float_format(properties_datamap, IDC_PORTAUDIO_LATENCY_DISP, "%3.2f");
 
 	// trackbar ranges - slider-name,start,end,step
 	datamap_set_trackbar_range(properties_datamap, IDC_JDZ,           0.00, 1.00,  (float)0.05);
@@ -2697,19 +2484,18 @@ static void BuildDataMap(void)
 	datamap_set_trackbar_range(properties_datamap, IDC_BEAM_INTEN,    -10.00, 10.00, (float)0.01);
 	datamap_set_trackbar_range(properties_datamap, IDC_BEAM_DOT,      1, 4, 1);
 	datamap_set_trackbar_range(properties_datamap, IDC_FLICKER,       0.00, 1.00, (float)0.01);
-	datamap_set_trackbar_range(properties_datamap, IDC_AUDIO_LATENCY, 1, 5, 1);
-	datamap_set_trackbar_range(properties_datamap, IDC_PORTAUDIO_LATENCY, 0.00, 0.25, (float)0.01);
+	datamap_set_trackbar_range(properties_datamap, IDC_AUDIO_LATENCY, 0.0, 10.0, (float)0.1);
 	datamap_set_trackbar_range(properties_datamap, IDC_VOLUME,        -32, 0, 1);
 	datamap_set_trackbar_range(properties_datamap, IDC_SECONDSTORUN,  0, 60, 1);
 	datamap_set_trackbar_range(properties_datamap, IDC_NUMSCREENS,    1, 4, 1);
-	datamap_set_trackbar_range(properties_datamap, IDC_PRESCALE,      1, 8, 1);
-	datamap_set_trackbar_range(properties_datamap, IDC_FSGAMMA,       0.1, 3.0, 0.5);
-	datamap_set_trackbar_range(properties_datamap, IDC_FSBRIGHTNESS,  0.1, 2.0, 0.1);
-	datamap_set_trackbar_range(properties_datamap, IDC_FSCONTRAST,    0.1, 2.0, 0.1);
-	datamap_set_trackbar_range(properties_datamap, IDC_GAMMA,         0.1, 3.0, 0.1);
-	datamap_set_trackbar_range(properties_datamap, IDC_BRIGHTCORRECT, 0.1, 2.0, 0.1);
-	datamap_set_trackbar_range(properties_datamap, IDC_CONTRAST,      0.1, 2.0, 0.1);
-	datamap_set_trackbar_range(properties_datamap, IDC_PAUSEBRIGHT,   0.0, 1.0, 0.05);
+	datamap_set_trackbar_range(properties_datamap, IDC_PRESCALE,      1, 20, 1);
+	datamap_set_trackbar_range(properties_datamap, IDC_FSGAMMA,       0.1, 3.0, (float)0.5);
+	datamap_set_trackbar_range(properties_datamap, IDC_FSBRIGHTNESS,  0.1, 2.0, (float)0.1);
+	datamap_set_trackbar_range(properties_datamap, IDC_FSCONTRAST,    0.1, 2.0, (float)0.1);
+	datamap_set_trackbar_range(properties_datamap, IDC_GAMMA,         0.1, 3.0, (float)0.1);
+	datamap_set_trackbar_range(properties_datamap, IDC_BRIGHTCORRECT, 0.1, 2.0, (float)0.1);
+	datamap_set_trackbar_range(properties_datamap, IDC_CONTRAST,      0.1, 2.0, (float)0.1);
+	datamap_set_trackbar_range(properties_datamap, IDC_PAUSEBRIGHT,   0.0, 1.0, (float)0.05);
 	datamap_set_trackbar_range(properties_datamap, IDC_BOOTDELAY,     0, 5, 1);
 	datamap_set_trackbar_range(properties_datamap, IDC_INTSCALEX,     0, 10, 1);
 	datamap_set_trackbar_range(properties_datamap, IDC_INTSCALEY,     0, 10, 1);
@@ -2717,12 +2503,10 @@ static void BuildDataMap(void)
 #ifdef MESS
 	// MESS specific stuff
 	datamap_add(properties_datamap, IDC_DIR_LIST,                    DM_STRING, NULL);
-	datamap_add(properties_datamap, IDC_RAM_COMBOBOX,                DM_INT, OPTION_RAMSIZE);
 
 	// set up callbacks
 	datamap_set_callback(properties_datamap, IDC_DIR_LIST,           DCT_READ_CONTROL,      DirListReadControl);
 	datamap_set_callback(properties_datamap, IDC_DIR_LIST,           DCT_POPULATE_CONTROL,  DirListPopulateControl);
-	datamap_set_callback(properties_datamap, IDC_RAM_COMBOBOX,       DCT_POPULATE_CONTROL,  RamPopulateControl);
 #endif
 }
 
@@ -2995,7 +2779,7 @@ static void InitializeProviderMappingUI(HWND hwnd)
 	HWND hCtrl3  = GetDlgItem(hwnd,IDC_PROV_JOYSTICK);
 	HWND hCtrl4  = GetDlgItem(hwnd,IDC_PROV_LIGHTGUN);
 	HWND hCtrl5  = GetDlgItem(hwnd,IDC_PROV_MONITOR);
-	HWND hCtrl6  = GetDlgItem(hwnd,IDC_PROV_OUTPUT);
+	HWND hCtrl6  = 0;
 
 	if (hCtrl)
 		for (i = 0; i < NUMPROVUIFONT; i++)
@@ -3052,7 +2836,7 @@ static void InitializeBIOSUI(HWND hwnd)
 {
 	HWND hCtrl = GetDlgItem(hwnd,IDC_BIOS);
 	int i = 0;
-	TCHAR* t_s;
+	const TCHAR* t_s;
 	if (hCtrl)
 	{
 		const game_driver *gamedrv = &driver_list::driver(g_nGame);
@@ -3064,7 +2848,8 @@ static void InitializeBIOSUI(HWND hwnd)
 			ComboBox_SetItemData( hCtrl, i++, "");
 			return;
 		}
-		if (g_nGame == LOCAL_OPTIONS) //Folder Options: This is the only place that LOCAL_OPTIONS is used.
+#if 0
+		//if (g_nGame == LOCAL_OPTIONS) //Folder Options: This is the only place that LOCAL_OPTIONS is used.
 		{
 			gamedrv = &driver_list::driver(g_nFolderGame);
 			if (DriverHasOptionalBIOS(g_nFolderGame) == false)
@@ -3084,8 +2869,8 @@ static void InitializeBIOSUI(HWND hwnd)
 					if (ROMENTRY_ISSYSTEM_BIOS(rom))
 					{
 						const char *name = rom->hashdata().c_str();
-						const char *biosname = rom->name().c_str();
-						t_s = ui_wstring_from_utf8(name);
+						const char *biosname = ROM_GETNAME(rom);
+						t_s = ui_to_utf16(name);
 						if( !t_s )
 							return;
 						ComboBox_InsertString(hCtrl, i, win_tstring_strdup(t_s));
@@ -3098,7 +2883,7 @@ static void InitializeBIOSUI(HWND hwnd)
 			}
 			return;
 		}
-
+#endif
 		if (DriverHasOptionalBIOS(g_nGame) == false)
 		{
 			ComboBox_InsertString(hCtrl, i, TEXT("None"));
@@ -3117,12 +2902,12 @@ static void InitializeBIOSUI(HWND hwnd)
 				{
 					const char *name = rom->hashdata().c_str();
 					const char *biosname = ROM_GETNAME(rom);
-					t_s = ui_wstring_from_utf8(name);
+					t_s = ui_to_utf16(name).c_str();
 					if( !t_s )
 						return;
 					ComboBox_InsertString(hCtrl, i, win_tstring_strdup(t_s));
 					ComboBox_SetItemData( hCtrl, i++, biosname);
-					free(t_s);
+					//free(t_s);
 				}
 			}
 		}
@@ -3143,6 +2928,8 @@ static void InitializeLanguageUI(HWND hWnd)
 		int english = -1;
 		int count = 0;
 		string t1 = dir_get_value(12);
+		if (t1.empty())
+			return;
 		const char* t2 = t1.c_str();
 		osd::directory::ptr directory = osd::directory::open(t2);
 
@@ -3158,7 +2945,7 @@ static void InitializeLanguageUI(HWND hWnd)
 
 				if (!(name == "." || name == ".."))
 				{
-					TCHAR *t_s = ui_wstring_from_utf8(entry->name);
+					TCHAR *t_s = ui_to_utf16(entry->name).c_str();
 					ComboBox_InsertString(hCtrl, count, win_tstring_strdup(t_s));
 					ComboBox_SetItemData(hCtrl, count, entry->name);
 					if (!c.empty() && name == c)
@@ -3188,45 +2975,11 @@ static void InitializeLanguageUI(HWND hWnd)
 
 static void InitializePluginsUI(HWND hWnd)
 {
-	HWND hCtrl = GetDlgItem(hWnd, IDC_SELECT_PLUGIN);
-
-	if (hCtrl)
-	{
-		string t1 = dir_get_value(11);
-		const char* t2 = t1.c_str();
-		osd::directory::ptr directory = osd::directory::open(t2);
-
-		if (directory == nullptr)
-			return;
-
-		TCHAR* t_s;
-		int count = 0;
-
-		for (const osd::directory::entry *entry = directory->read(); entry; entry = directory->read())
-		{
-			if (entry->type == osd::directory::entry::entry_type::DIR)
-			{
-				string name = entry->name;
-
-				if (!(name == "." || name == ".." || name == "json"))
-				{
-					plugin_names[count] = name;
-					const char* label = name.c_str();
-					t_s = ui_wstring_from_utf8(label);
-					label = 0;
-					if( !t_s )
-						return;
-					if (ComboBox_InsertString(hCtrl, count++, win_tstring_strdup(t_s)) == CB_ERR)
-						return;
-					free(t_s);
-				}
-			}
-		}
-		directory.reset();
-	}
-
+	HWND hCtrl = GetDlgItem(hWnd, IDC_PLUGIN_SELECT);
 	ComboBox_SetCurSel(hCtrl, -1);
 	ComboBox_SetCueBannerText(hCtrl, TEXT("Select a plugin"));
+	std::string plugin_all;  // dummy placeholder
+	std::tie(plugin_chosen, plugin_all) = mui_plugin_options().get_lists(m_CurrentOpts);
 }
 
 static void InitializeGLSLFilterUI(HWND hWnd)
@@ -3259,14 +3012,14 @@ static void InitializeBGFXBackendUI(HWND hWnd)
 
 static BOOL SelectEffect(HWND hWnd)
 {
-	char filename[MAX_PATH];
+	char filename[MAX_PATH]{};
 	BOOL changed = false;
 
 	*filename = 0;
 	if (CommonFileDialog(GetOpenFileName, filename, FILETYPE_EFFECT_FILES))
 	{
 		//strip Path and extension
-		char buff[MAX_PATH];
+		char buff[MAX_PATH]{};
 		int i, j = 0, k = 0, l = 0;
 		for(i=0; i<strlen(filename); i++ )
 		{
@@ -3315,25 +3068,23 @@ static BOOL ResetEffect(HWND hWnd)
 int winui_get_window_text_utf8(HWND hWnd, char *buffer, size_t buffer_size)
 {
 	int result = 0;
-	wchar_t t_buffer[256];
+	wchar_t t_buffer[256]{};
 
-	t_buffer[0] = '\0';
 	// invoke the core Win32 API
 	GetWindowText(hWnd, t_buffer, std::size(t_buffer));
-	char *utf8_buffer = win_utf8_from_wstring(t_buffer);
+	const char *utf8_buffer = ui_utf8_from_wstring(t_buffer);
 
 	if (!utf8_buffer)
 		return result;
 
 	result = snprintf(buffer, buffer_size, "%s", utf8_buffer);
-	free(utf8_buffer);
 	return result;
 }
 
 static BOOL ChangeFallback(HWND hWnd)
 {
 	BOOL changed = false;
-	char data[90];
+	char data[90]{};
 
 	winui_get_window_text_utf8(GetDlgItem(hWnd, IDC_ARTWORK_FALLBACK), data, std::size(data));
 
@@ -3349,7 +3100,7 @@ static BOOL ChangeFallback(HWND hWnd)
 static BOOL ChangeOverride(HWND hWnd)
 {
 	BOOL changed = false;
-	char data[90];
+	char data[90]{};
 
 	winui_get_window_text_utf8(GetDlgItem(hWnd, IDC_ARTWORK_OVERRIDE), data, std::size(data));
 
@@ -3365,7 +3116,7 @@ static BOOL ChangeOverride(HWND hWnd)
 static BOOL ChangeJoystickMap(HWND hWnd)
 {
 	BOOL changed = false;
-	char joymap[90];
+	char joymap[90]{};
 
 	winui_get_window_text_utf8(GetDlgItem(hWnd, IDC_JOYSTICKMAP), joymap, std::size(joymap));
 
@@ -3395,25 +3146,19 @@ static BOOL ResetJoystickMap(HWND hWnd)
 
 static bool SelectLUAScript(HWND hWnd)
 {
-	char filename[MAX_PATH];
+	char filename[MAX_PATH]{};
 	bool changed = false;
 
 	*filename = 0;
 
 	if (CommonFileDialog(GetOpenFileName, filename, FILETYPE_LUASCRIPT_FILES))
 	{
-		char option[MAX_PATH];
-		char script[MAX_PATH];
-		wchar_t *t_filename = ui_wstring_from_utf8(filename);
-		wchar_t *tempname = PathFindFileName(t_filename);
-		char *optvalue = ui_utf8_from_wstring(tempname);
-		strcpy(script, optvalue);
+		char option[MAX_PATH]{};
+		char script[MAX_PATH]{};
+		wchar_t *tempname = PathFindFileName(ui_to_utf16(filename).c_str());
+		snprintf(script, sizeof(script), "%s", ui_to_utf8(tempname).c_str());
 		PathRemoveExtension(tempname);
-		char *optname = ui_utf8_from_wstring(tempname);
-		strcpy(option, optname);
-		free(t_filename);
-		free(optname);
-		free(optvalue);
+		snprintf(option, sizeof(option), "%s", ui_to_utf8(tempname).c_str());
 
 		if (strcmp(script, m_CurrentOpts.value(OPTION_AUTOBOOT_SCRIPT)))
 		{
@@ -3444,8 +3189,7 @@ static bool ResetLUAScript(HWND hWnd)
 static bool SelectPlugins(HWND hWnd)
 {
 	bool changed = false;
-	bool already_enabled = false;
-	HWND hcontrol = GetDlgItem(hWnd, IDC_SELECT_PLUGIN);
+	HWND hcontrol = GetDlgItem(hWnd, IDC_PLUGIN_SELECT);
 	if (!hcontrol)
 		return changed;
 
@@ -3454,87 +3198,53 @@ static bool SelectPlugins(HWND hWnd)
 		return changed;
 
 	const char *new_value = plugin_names[index].c_str();
-	string t1 = emu_get_value(m_CurrentOpts, OPTION_PLUGIN);
-	const char* value = t1.c_str();
 
-	char *token = NULL;
-	char buffer[990];  // hold all plugins
-	char plugins[24][32]; // number of possible plugins, max length of name
-	int num_plugins = 0;
+	// see if plugin already chosen
+	std::size_t found = plugin_chosen.find(new_value);
 
-	strcpy(buffer, value);
-	token = strtok(buffer, ",");
-
-	if (token == NULL)
+	// if already there remove it, otherwise add it
+	if (found == std::string::npos)
 	{
-		strcpy(plugins[num_plugins], buffer);
+		// not found - add it
+		if (plugin_chosen.empty())
+			plugin_chosen = new_value;
+		else
+			plugin_chosen = plugin_chosen + "," + new_value;
 	}
 	else
 	{
-		while (token != NULL)
-		{
-			strcpy(plugins[num_plugins], token);
-			num_plugins++;
-			token = strtok(NULL, ",");
-		}
+		// already there, remove it and the next comma
+		plugin_chosen.erase(found, strlen(new_value)+1);
 	}
 
-	if (strcmp(value, "") == 0)
-	{
-		emu_set_value(m_CurrentOpts, OPTION_PLUGIN, new_value);
-		win_set_window_text_utf8(GetDlgItem(hWnd, IDC_PLUGIN), new_value);
-		changed = true;
-		ComboBox_SetCurSel(GetDlgItem(hWnd, IDC_SELECT_PLUGIN), -1);
-		return changed;	
-	}
-
-	for (u8 i = 0; i < num_plugins; i++)
-	{
-		if (strcmp(new_value, plugins[i]) == 0)
-		{
-			already_enabled = true;
-			break;
-		}
-	}
-
-	if (!already_enabled)
-	{
-		char new_option[256];
-		snprintf(new_option, std::size(new_option), "%s,%s", value, new_value);
-		emu_set_value(m_CurrentOpts, OPTION_PLUGIN, new_option);
-		win_set_window_text_utf8(GetDlgItem(hWnd, IDC_PLUGIN), new_option);
-		changed = true;
-	}
-
-	ComboBox_SetCurSel(GetDlgItem(hWnd, IDC_SELECT_PLUGIN), -1);
+	win_set_window_text_utf8(GetDlgItem(hWnd, IDC_PLUGIN_LIST),
+		plugin_chosen.empty() ? "None" : plugin_chosen.c_str());
+	changed = true;
+	ComboBox_SetCurSel(GetDlgItem(hWnd, IDC_PLUGIN_SELECT), -1);
 	return changed;
 }
 
 static bool ResetPlugins(HWND hWnd)
 {
-	emu_set_value(m_CurrentOpts, OPTION_PLUGIN, "");
-	win_set_window_text_utf8(GetDlgItem(hWnd, IDC_PLUGIN), "None");
-	ComboBox_SetCurSel(GetDlgItem(hWnd, IDC_SELECT_PLUGIN), -1);
+	plugin_chosen.clear();
+	win_set_window_text_utf8(GetDlgItem(hWnd, IDC_PLUGIN_LIST), "None");
+	ComboBox_SetCurSel(GetDlgItem(hWnd, IDC_PLUGIN_SELECT), -1);
 	return true;
 }
 
 static bool SelectBGFXChains(HWND hWnd)
 {
-	char filename[MAX_PATH];
+	char filename[MAX_PATH]{};
 	bool changed = false;
 
 	*filename = 0;
 
 	if (CommonFileDialog(GetOpenFileName, filename, FILETYPE_BGFX_FILES))
 	{
-		char option[MAX_PATH];
-		wchar_t *t_filename = win_wstring_from_utf8(filename);
-		wchar_t *tempname = PathFindFileName(t_filename);
+		char option[MAX_PATH]{};
+		wchar_t *tempname = PathFindFileName(ui_to_utf16(filename).c_str());
 		PathRemoveExtension(tempname);
-		char *optname = win_utf8_from_wstring(tempname);
-		strcpy(option, optname);
-		free(t_filename);
-		free(optname);
+		snprintf(option, sizeof(option), "%s", ui_to_utf8(tempname).c_str());
 
 		if (strcmp(option, m_CurrentOpts.value(OSDOPTION_BGFX_SCREEN_CHAINS)))
 		{
@@ -3618,17 +3328,15 @@ static void AppendList(HWND hList, LPCTSTR lpItem, int nItem)
 	Item.mask = LVIF_TEXT;
 	Item.pszText = (LPTSTR) lpItem;
 	Item.iItem = nItem;
-	HRESULT res = ListView_InsertItem(hList, &Item);
-	res++;
+	(void)ListView_InsertItem(hList, &Item);
 }
 
 static BOOL DirListReadControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name)
 {
 	int directory_count;
 	LV_ITEM lvi;
-	TCHAR buffer[2048];
+	TCHAR buffer[2048]{};
 	int pos = 0;
-	BOOL res;
 
 	// determine the directory count; note that one item is the "<    >" entry
 	directory_count = ListView_GetItemCount(control);
@@ -3649,16 +3357,15 @@ static BOOL DirListReadControl(datamap *map, HWND dialog, HWND control, windows_
 		lvi.iItem = i;
 		lvi.pszText = &buffer[pos];
 		lvi.cchTextMax = std::size(buffer) - pos;
-		res = ListView_GetItem(control, &lvi);
+		(void)ListView_GetItem(control, &lvi);
 
 		// advance the position
 		pos += _tcslen(&buffer[pos]);
 	}
 
-	char* paths = ui_utf8_from_wstring(buffer);
+	char* paths = ui_to_utf8(buffer).c_str();
 	emu_set_value(o, OPTION_SWPATH, paths);
 
-	res++;
 	return true;
 }
 
@@ -3676,13 +3383,13 @@ static BOOL DirListPopulateControl(datamap *map, HWND dialog, HWND control, wind
 
 	if (dirs)
 	{
-		t_dir_list = ui_wstring_from_utf8(c.c_str());
+		t_dir_list = ui_to_utf16(c).c_str();
 		if (!t_dir_list)
 			return false;
 	}
 
 	// delete all items in the list control
-	BOOL b_res = ListView_DeleteAllItems(control);
+	(void)ListView_DeleteAllItems(control);
 
 	// add the column
 	RECT r;
@@ -3691,7 +3398,7 @@ static BOOL DirListPopulateControl(datamap *map, HWND dialog, HWND control, wind
 	memset(&lvc, 0, sizeof(LVCOLUMN));
 	lvc.mask = LVCF_WIDTH;
 	lvc.cx = r.right - r.left - GetSystemMetrics(SM_CXHSCROLL);
-	HRESULT res = ListView_InsertColumn(control, 0, &lvc);
+	(void)ListView_InsertColumn(control, 0, &lvc);
 
 	// add each of the directories
 	int pos = 0;
@@ -3723,8 +3430,6 @@ static BOOL DirListPopulateControl(datamap *map, HWND dialog, HWND control, wind
 	AppendList(control, TEXT(DIRLIST_NEWENTRYTEXT), current_item);
 	ListView_SetItemState(control, 0, LVIS_SELECTED, LVIS_SELECTED);
 	free(t_dir_list);
-	res++;
-	b_res++;
 	return true;
 }
 
@@ -3739,10 +3444,9 @@ static void MarkChanged(HWND hDlg)
 
 static BOOL SoftwareDirectories_OnInsertBrowse(HWND hDlg, BOOL bBrowse, LPCTSTR lpItem)
 {
-	TCHAR inbuf[MAX_PATH];
-	TCHAR outbuf[MAX_PATH];
+	TCHAR inbuf[MAX_PATH]{};
+	TCHAR outbuf[MAX_PATH]{};
 	LPTSTR lpIn;
-	BOOL res = false;
 
 	g_bModifiedSoftwarePaths = true;
 
@@ -3774,9 +3478,9 @@ static BOOL SoftwareDirectories_OnInsertBrowse(HWND hDlg, BOOL bBrowse, LPCTSTR 
 
 	AppendList(hList, lpItem, nItem);
 	if (bBrowse)
-		res = ListView_DeleteItem(hList, nItem+1);
+		(void)ListView_DeleteItem(hList, nItem+1);
 	MarkChanged(hDlg);
-	res++;
+
 	return true;
 }
 
@@ -3798,7 +3502,7 @@ static BOOL SoftwareDirectories_OnDelete(HWND hDlg)
 	if (nItem == ListView_GetItemCount(hList) - 1)
 		return false;
 
-	BOOL res = ListView_DeleteItem(hList, nItem);
+	(void)ListView_DeleteItem(hList, nItem);
 
 	int nCount = ListView_GetItemCount(hList);
 	if (nCount <= 1)
@@ -3812,7 +3516,7 @@ static BOOL SoftwareDirectories_OnDelete(HWND hDlg)
 
 	ListView_SetItemState(hList, nSelect, LVIS_FOCUSED | LVIS_SELECTED, LVIS_FOCUSED | LVIS_SELECTED);
 	MarkChanged(hDlg);
-	res++;
+
 	return true;
 }
 
@@ -3863,33 +3567,6 @@ static BOOL SoftwareDirectories_OnEndLabelEdit(HWND hDlg, NMHDR* pNMHDR)
 		SoftwareDirectories_OnInsertBrowse(hDlg, true, pItem->pszText);
 
 	return bResult;
-}
-
-
-static BOOL DriverHasDevice(const game_driver *gamedrv, iodevice_t type)
-{
-	BOOL b = false;
-
-	// allocate the machine config
-	machine_config config(*gamedrv,MameUIGlobal());
-
-	for (device_image_interface &dev : image_interface_enumerator(config.root_device()))
-	{
-		if (!dev.user_loadable())
-			continue;
-		if (dev.image_type() == type)
-		{
-			b = true;
-			break;
-		}
-	}
-	return b;
-}
-
-BOOL PropSheetFilter_Config(const machine_config *drv, const game_driver *gamedrv)
-{
-	ram_device_enumerator iter(drv->root_device());
-	return (iter.first()) || DriverHasDevice(gamedrv, IO_PRINTER);
 }
 
 INT_PTR CALLBACK GameMessOptionsProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
@@ -3949,138 +3626,5 @@ BOOL MessPropertiesCommand(HWND hWnd, WORD wNotifyCode, WORD wID, BOOL *changed)
 	}
 	return handled;
 }
-
-//============================================================
-//  Functions to handle the RAM control
-//============================================================
-
-static const char *messram_string(char *buffer, UINT32 ram)
-{
-	const char *suffix;
-
-	if ((ram % (1024*1024)) == 0)
-	{
-		ram /= 1024*1024;
-		suffix = "MB";
-	}
-	else if ((ram % 1024) == 0)
-	{
-		ram /= 1024;
-		suffix = "KB";
-	}
-	else
-		suffix = "";
-
-	sprintf(buffer, "%u%s", ram, suffix);
-	return buffer;
-}
-
-//-------------------------------------------------
-//  parse_string - convert a ram string to an
-//  integer value
-//-------------------------------------------------
-
-static uint32_t parse_string(const char *s)
-{
-	static const struct
-	{
-		const char *suffix;
-		unsigned multiple;
-	} s_suffixes[] =
-	{
-		{ "",       1 },
-		{ "k",      1024 },
-		{ "kb",     1024 },
-		{ "kib",    1024 },
-		{ "m",      1024 * 1024 },
-		{ "mb",     1024 * 1024 },
-		{ "mib",    1024 * 1024 }
-	};
-
-	// parse the string
-	unsigned ram = 0;
-	char suffix[8] = { 0, };
-	sscanf(s, "%u%7s", &ram, suffix);
-
-	// perform the lookup
-	auto iter = std::find_if(std::begin(s_suffixes), std::end(s_suffixes), [&suffix](const auto &potential_suffix)
-	{ return !core_stricmp(suffix, potential_suffix.suffix); } );
-
-	// identify the multiplier (or 0 if not recognized, signalling a parse failure)
-	unsigned multiple = iter != std::end(s_suffixes) ? iter->multiple : 0;
-
-	// return the result
-	return ram * multiple;
-}
-
-static BOOL RamPopulateControl(datamap *map, HWND dialog, HWND control, windows_options *o, const char *option_name)
-{
-	int i = 0, current_index = 0;
-
-	// identify the driver
-	int driver_index = PropertiesCurrentGame(dialog);
-	const game_driver *gamedrv = &driver_list::driver(driver_index);
-
-	// clear out the combo box
-	ComboBox_ResetContent(control);
-
-	// allocate the machine config
-	machine_config cfg(*gamedrv,*o);
-
-	// identify how many options that we have
-	ram_device_enumerator iter(cfg.root_device());
-	ram_device *device = iter.first();
-
-	EnableWindow(control, (device != NULL));
-
-	// we can only do something meaningful if there is more than one option
-	if (device)
-	{
-		const ram_device *ramdev = dynamic_cast<const ram_device *>(device);
-
-		// identify the current amount of RAM
-		const char *this_ram_string = o->value(OPTION_RAMSIZE);
-		uint32_t current_ram = (this_ram_string) ? parse_string(this_ram_string) : 0;
-		uint32_t ram = ramdev->default_size();
-		if (current_ram == 0)
-			current_ram = ram;
-
-		char ramtext[20];
-		messram_string(ramtext, ram);
-		TCHAR *t_ramstring = ui_wstring_from_utf8(ramtext);
-		if( !t_ramstring )
-			return false;
-
-		ComboBox_InsertString(control, i, win_tstring_strdup(t_ramstring));
-		ComboBox_SetItemData(control, i, ram);
-
-		if (!ramdev->extra_options().empty())
-		{
-			/* try to parse each option */
-			for (ram_device::extra_option const &option : ramdev->extra_options())
-			{
-				// identify this option
-				t_ramstring = ui_wstring_from_utf8(option.first.c_str());
-				if( t_ramstring )
-				{
-					i++;
-					// add this option to the combo box
-					ComboBox_InsertString(control, i, win_tstring_strdup(t_ramstring));
-					ComboBox_SetItemData(control, i, option.second);
-
-					// is this the current option?  record the index if so
-					if (option.second == current_ram)
-						current_index = i;
-				}
-			}
-		}
-		if (t_ramstring)
-			free (t_ramstring);
-		// set the combo box
-		ComboBox_SetCurSel(control, current_index);
-	}
-	return true;
-}
-
 #endif
 

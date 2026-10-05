@@ -13,10 +13,12 @@ SMSC FDC37C665GT High Performance Multi-Mode Parallel Port Super I/O Floppy Disk
 
 #pragma once
 
+// IDE
+#include "bus/ata/ataintf.h"
+#include "machine/idectrl.h"
 // floppy disk controller
 #include "machine/upd765.h"
 #include "imagedev/floppy.h"
-#include "formats/pc_dsk.h"
 // parallel port
 #include "machine/pc_lpt.h"
 // serial port
@@ -29,16 +31,25 @@ public:
 		: fdc37c665gt_device(mconfig, tag, owner, clock, upd765_family_device::mode_t::AT)
 	{ }
 
+	template<typename T> void set_ide(T&& tag) { m_ide.set_tag(std::forward<T>(tag)); }
+
 	fdc37c665gt_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, upd765_family_device::mode_t floppy_mode);
 
 	// optional information overrides
-	virtual void device_add_mconfig(machine_config &config) override;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 
 	// to access io ports
-	uint8_t read(offs_t offset);
-	void write(offs_t offset, uint8_t data);
+	uint8_t read(offs_t offset) { return read16(offset) & 0xff; }
+	void write(offs_t offset, uint8_t data) { write16(offset, data); }
+
+	// alternate access for IDE Low/High byte enable
+	uint16_t read16(offs_t offset);
+	void write16(offs_t offset, uint16_t data);
 
 	auto fintr() { return m_fintr_callback.bind(); }
+	auto pintr1() { return m_pintr1_callback.bind(); }
+	auto irq3() { return m_irq3_callback.bind(); }
+	auto irq4() { return m_irq4_callback.bind(); }
 	auto fdrq() { return m_fdrq_callback.bind(); }
 	auto txd1() { return m_txd1_callback.bind(); }
 	auto ndtr1() { return m_ndtr1_callback.bind(); }
@@ -48,36 +59,42 @@ public:
 	auto nrts2() { return m_nrts2_callback.bind(); }
 
 	// chip pins for uarts
-	DECLARE_WRITE_LINE_MEMBER(rxd1_w);
-	DECLARE_WRITE_LINE_MEMBER(ndcd1_w);
-	DECLARE_WRITE_LINE_MEMBER(ndsr1_w);
-	DECLARE_WRITE_LINE_MEMBER(nri1_w);
-	DECLARE_WRITE_LINE_MEMBER(ncts1_w);
-	DECLARE_WRITE_LINE_MEMBER(rxd2_w);
-	DECLARE_WRITE_LINE_MEMBER(ndcd2_w);
-	DECLARE_WRITE_LINE_MEMBER(ndsr2_w);
-	DECLARE_WRITE_LINE_MEMBER(nri2_w);
-	DECLARE_WRITE_LINE_MEMBER(ncts2_w);
+	void rxd1_w(int state);
+	void ndcd1_w(int state);
+	void ndsr1_w(int state);
+	void nri1_w(int state);
+	void ncts1_w(int state);
+	void rxd2_w(int state);
+	void ndcd2_w(int state);
+	void ndsr2_w(int state);
+	void nri2_w(int state);
+	void ncts2_w(int state);
+
+	uint8_t fdc_dma_r(offs_t offset) { return m_fdc->dma_r(); }
+	void fdc_dma_w(offs_t offset, u8 data) { m_fdc->dma_w(data); }
+
+	void fdc_tc_w(int state) { m_fdc->tc_w(state); }
 
 protected:
 	// device-level overrides
-	virtual void device_start() override;
+	virtual void device_start() override ATTR_COLD;
 
 	// for the internal floppy controller
-	DECLARE_WRITE_LINE_MEMBER(irq_floppy_w);
+	void irq_floppy_w(int state);
+	void drq_floppy_w(int state);
 
 	// for the internal parallel port
-	DECLARE_WRITE_LINE_MEMBER(irq_parallel_w);
+	void irq_parallel_w(int state);
 
 	// for the internal uarts
-	DECLARE_WRITE_LINE_MEMBER(irq_serial1_w);
-	DECLARE_WRITE_LINE_MEMBER(txd_serial1_w);
-	DECLARE_WRITE_LINE_MEMBER(dtr_serial1_w);
-	DECLARE_WRITE_LINE_MEMBER(rts_serial1_w);
-	DECLARE_WRITE_LINE_MEMBER(irq_serial2_w);
-	DECLARE_WRITE_LINE_MEMBER(txd_serial2_w);
-	DECLARE_WRITE_LINE_MEMBER(dtr_serial2_w);
-	DECLARE_WRITE_LINE_MEMBER(rts_serial2_w);
+	void irq_serial1_w(int state);
+	void txd_serial1_w(int state);
+	void dtr_serial1_w(int state);
+	void rts_serial1_w(int state);
+	void irq_serial2_w(int state);
+	void txd_serial2_w(int state);
+	void dtr_serial2_w(int state);
+	void rts_serial2_w(int state);
 
 private:
 	// put your private members here
@@ -111,8 +128,8 @@ private:
 	devcb_write_line m_fintr_callback;
 	devcb_write_line m_fdrq_callback;
 	devcb_write_line m_pintr1_callback; // Parallel
-	devcb_write_line m_irq3_callback; // Serial Port COM1/COM3
-	devcb_write_line m_irq4_callback; // Serial Port COM2/COM4
+	devcb_write_line m_irq3_callback; // Serial Port COM2/COM4
+	devcb_write_line m_irq4_callback; // Serial Port COM1/COM3
 
 	devcb_write_line m_txd1_callback;
 	devcb_write_line m_ndtr1_callback;
@@ -124,6 +141,7 @@ private:
 	required_device<n82077aa_device> m_fdc;
 	required_device_array<ns16550_device, 2> m_serial;
 	required_device<pc_lpt_device> m_lpt;
+	optional_device<ata_interface_device> m_ide;
 
 	void write_configuration_register(int index, int data);
 };

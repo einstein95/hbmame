@@ -9,8 +9,11 @@
 **************************************************************************/
 
 #include "emu.h"
+
 #include "emuopts.h"
+#include "main.h"
 #include "screen.h"
+
 
 //**************************************************************************
 //  DRIVER STATE
@@ -48,7 +51,7 @@ protected:
 void empty_state::___empty(machine_config &config)
 {
 	// video hardware
-	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_RASTER));
+	screen_device &screen(SCREEN(config, "screen"));
 	screen.set_screen_update(FUNC(empty_state::screen_update));
 	screen.set_size(640, 480);
 	screen.set_visarea(0, 639, 0, 479);

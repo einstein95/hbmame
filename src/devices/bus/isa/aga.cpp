@@ -205,13 +205,13 @@ void isa8_aga_pc200_device::device_start()
 		gfx[i] = i;
 }
 
-WRITE_LINE_MEMBER( isa8_aga_device::hsync_changed )
+void isa8_aga_device::hsync_changed(int state)
 {
 	m_hsync = state ? 1 : 0;
 }
 
 
-WRITE_LINE_MEMBER( isa8_aga_device::vsync_changed )
+void isa8_aga_device::vsync_changed(int state)
 {
 	m_vsync = state ? 8 : 0;
 	if (state)
@@ -261,7 +261,7 @@ MC6845_UPDATE_ROW( isa8_aga_device::aga_update_row )
 
 void isa8_aga_device::device_add_mconfig(machine_config &config)
 {
-	screen_device &screen(SCREEN(config, AGA_SCREEN_NAME, SCREEN_TYPE_RASTER));
+	screen_device &screen(SCREEN(config, AGA_SCREEN_NAME));
 	screen.set_raw(XTAL(14'318'181), 912, 0, 640, 262, 0, 200);
 	screen.set_screen_update(AGA_MC6845_NAME, FUNC(mc6845_device::screen_update));
 

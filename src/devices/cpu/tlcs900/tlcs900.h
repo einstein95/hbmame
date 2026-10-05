@@ -20,6 +20,9 @@ enum tlcs900_inputs
 	TLCS900_INT6,
 	TLCS900_INT7,
 	TLCS900_INT8,
+	TLCS900_INT9,
+	TLCS900_INTA,
+	TLCS900_INTB,
 	TLCS900_TIO,
 	TLCS900_NUM_INPUTS
 };
@@ -51,13 +54,12 @@ protected:
 	tlcs900_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	// device_execute_interface overrides
 	virtual uint32_t execute_min_cycles() const noexcept override { return 1; } /* FIXME */
 	virtual uint32_t execute_max_cycles() const noexcept override { return 1; } /* FIXME */
-	virtual uint32_t execute_input_lines() const noexcept override { return 6; }
 	virtual bool execute_input_edge_triggered(int inputnum) const noexcept override { return inputnum == INPUT_LINE_NMI; }
 	virtual void execute_run() override;
 
@@ -65,6 +67,7 @@ protected:
 	virtual space_config_vector memory_space_config() const override;
 
 	// device_state_interface overrides
+	virtual void state_import(const device_state_entry &entry) override;
 	virtual void state_string_export(const device_state_entry &entry, std::string &str) const override;
 
 	// device_disasm_interface overrides
@@ -100,11 +103,19 @@ protected:
 	PAIR    m_dmac[4];
 	PAIR    m_dmam[4];
 
+	/* Control register 0x3C (0x7C on the TMP94C241), INTNEST: how many interrupt
+	   frames are currently stacked.  Incremented where each device accepts an
+	   interrupt and pushes SR/PC, decremented in op_RETI, so the two stay paired.
+	   Decoded on the 16-bit CR paths.  Saturates at zero, so an unmatched RETI
+	   leaves it reading "not nested". */
+	uint16_t  m_intnest;
+
 	/* Internal timers, irqs, etc */
 	uint32_t  m_timer_pre;
-	uint8_t   m_timer[6];
-	int     m_timer_change[4];
+	uint8_t   m_timer_8[6];
+	int     m_timer_change[8];
 	bool    m_prefetch_clear;
+	bool    m_irq_inhibit;  /* interrupt shadow after EI/RETI - defer IRQ acceptance by 1 instruction */
 	uint8_t   m_prefetch_index;
 	uint8_t   m_prefetch[4];
 
@@ -169,6 +180,11 @@ protected:
 	const tlcs900inst *m_mnemonic;
 
 	inline uint8_t RDOP();
+	/* Bump INTNEST.  Called where a device pushes the SR/PC frame that op_RETI
+	   will later unwind.  NMI counts, because it pushes and unwinds the same way;
+	   SWI/TRAP do not, because they need not return through RETI. */
+	void tlcs900_intnest_accept() { if ( m_intnest < 0xffff ) m_intnest++; }
+
 	virtual void tlcs900_check_hdma() = 0;
 	virtual void tlcs900_check_irqs() = 0;
 	virtual void tlcs900_handle_ad() = 0;
@@ -644,7 +660,7 @@ protected:
 	tlcs900h_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 
 	// device-level overrides
-	virtual void device_reset() override;
+	virtual void device_reset() override ATTR_COLD;
 
 	virtual int tlcs900_gpr_cycles() const override { return 1; }
 	virtual int tlcs900_mem_index_cycles() const override { return 1; }

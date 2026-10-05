@@ -30,18 +30,18 @@ public:
 	// inline configuration helpers
 	void set_offsets(int sx, int sy) { m_sx = sx; m_sy = sy; }
 
-	DECLARE_WRITE_LINE_MEMBER( cs_w );
-	DECLARE_WRITE_LINE_MEMBER( cd_w );
-	DECLARE_WRITE_LINE_MEMBER( sck_w );
-	DECLARE_WRITE_LINE_MEMBER( si_w );
-	DECLARE_READ_LINE_MEMBER( so_r );
+	void cs_w(int state);
+	void cd_w(int state);
+	void sck_w(int state);
+	void si_w(int state);
+	int so_r();
 
 	uint32_t screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 
 protected:
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	// device_memory_interface overrides
 	virtual space_config_vector memory_space_config() const override;
@@ -65,6 +65,8 @@ private:
 		CMD_DISP_OFF    = 0x08
 	};
 
+	void write_byte(uint8_t data);
+
 	int m_sx;
 	int m_sy;
 
@@ -74,7 +76,13 @@ private:
 	int m_si;
 	int m_so;
 
-	void upd7227_map(address_map &map);
+	uint8_t m_data;
+	uint8_t m_bits;
+	uint8_t m_pa;
+	uint8_t m_mode;
+	int m_disp;
+
+	void upd7227_map(address_map &map) ATTR_COLD;
 };
 
 

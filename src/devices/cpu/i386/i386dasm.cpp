@@ -1790,7 +1790,7 @@ const i386_disassembler::I386_OPCODE i386_disassembler::group0FAE_table[8] =
 	{"fxsave",          0,              PARAM_RM,           0,                  0               },
 	{"fxrstor",         0,              PARAM_RM,           0,                  0               },
 	{"ldmxcsr",         0,              PARAM_RM,           0,                  0               },
-	{"stmxscr",         0,              PARAM_RM,           0,                  0               },
+	{"stmxcsr",         0,              PARAM_RM,           0,                  0               },
 	{"???",             0,              0,                  0,                  0               },
 	{"lfence",          0,              0,                  0,                  0               },
 	{"mfence",          0,              0,                  0,                  0               },
@@ -1914,9 +1914,9 @@ char *i386_disassembler::hexstring(uint32_t value, int digits)
 	static char buffer[20];
 	buffer[0] = '0';
 	if (digits)
-		sprintf(&buffer[1], "%0*Xh", digits, value);
+		snprintf(&buffer[1], 19, "%0*Xh", digits, value);
 	else
-		sprintf(&buffer[1], "%Xh", value);
+		snprintf(&buffer[1], 19, "%Xh", value);
 	return (buffer[1] >= '0' && buffer[1] <= '9') ? &buffer[1] : &buffer[0];
 }
 
@@ -1925,9 +1925,9 @@ char *i386_disassembler::hexstring64(uint32_t lo, uint32_t hi)
 	static char buffer[40];
 	buffer[0] = '0';
 	if (hi != 0)
-		sprintf(&buffer[1], "%X%08Xh", hi, lo);
+		snprintf(&buffer[1], 39, "%X%08Xh", hi, lo);
 	else
-		sprintf(&buffer[1], "%Xh", lo);
+		snprintf(&buffer[1], 39, "%Xh", lo);
 	return (buffer[1] >= '0' && buffer[1] <= '9') ? &buffer[1] : &buffer[0];
 }
 

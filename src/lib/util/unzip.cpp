@@ -2,7 +2,7 @@
 // copyright-holders:Aaron Giles, Vas Crabb
 /***************************************************************************
 
-    unzip.c
+    unzip.cpp
 
     Functions to manipulate data within ZIP files.
 
@@ -13,6 +13,8 @@
 #include "corestr.h"
 #include "hashing.h"
 #include "ioprocs.h"
+#include "multibyte.h"
+#include "pkzipdefs.h"
 #include "timeconv.h"
 
 #include "osdcore.h"
@@ -21,6 +23,7 @@
 #include "lzma/C/LzmaDec.h"
 
 #include <zlib.h>
+#include <zstd.h>
 
 #include <algorithm>
 #include <array>
@@ -80,10 +83,17 @@ public:
 		std::fill(m_buffer.begin(), m_buffer.end(), 0);
 	}
 
+	zip_file_impl(random_read &file) noexcept
+		: zip_file_impl(std::string())
+	{
+		m_file = &file;
+	}
+
 	zip_file_impl(random_read::ptr &&file) noexcept
 		: zip_file_impl(std::string())
 	{
-		m_file = std::move(file);
+		m_owned_file = std::move(file);
+		m_file = m_owned_file.get();
 	}
 
 	static ptr find_cached(std::string_view filename) noexcept
@@ -116,7 +126,7 @@ public:
 
 	std::error_condition initialize() noexcept
 	{
-		// read ecd data
+		// read ECD data
 		auto const ziperr = read_ecd();
 		if (ziperr)
 			return ziperr;
@@ -152,8 +162,7 @@ public:
 		while (cd_remaining)
 		{
 			std::size_t const chunk(std::size_t(std::min<std::uint64_t>(std::numeric_limits<std::size_t>::max(), cd_remaining)));
-			std::size_t read_length(0);
-			std::error_condition const filerr = m_file->read_at(m_ecd.cd_start_disk_offset + cd_offs, &m_cd[cd_offs], chunk, read_length);
+			auto const [filerr, read_length] = read_at(*m_file, m_ecd.cd_start_disk_offset + cd_offs, &m_cd[cd_offs], chunk);
 			if (filerr)
 			{
 				osd_printf_error(
@@ -232,6 +241,7 @@ private:
 	{
 		if (!m_file)
 		{
+			assert(!m_owned_file);
 			osd_file::ptr file;
 			auto const filerr = osd_file::open(m_filename, OPEN_FLAG_READ, file, m_length);
 			if (filerr)
@@ -240,12 +250,13 @@ private:
 				//osd_printf_error("unzip: error reopening archive file %s (%s:%d %s)\n", m_filename, filerr.category().name(), filerr.value(), filerr.message());
 				return filerr;
 			}
-			m_file = osd_file_read(std::move(file));
-			if (!m_file)
+			m_owned_file = osd_file_read(std::move(file));
+			if (!m_owned_file)
 			{
 				osd_printf_error("unzip: not enough memory to open archive file %s\n", m_filename);
 				return std::errc::not_enough_memory;
 			}
+			m_file = m_owned_file.get();
 			osd_printf_verbose("unzip: opened archive file %s\n", m_filename);
 		}
 		else if (!m_length)
@@ -288,6 +299,7 @@ private:
 	std::error_condition decompress_data_type_0(std::uint64_t offset, void *buffer, std::size_t length) noexcept;
 	std::error_condition decompress_data_type_8(std::uint64_t offset, void *buffer, std::size_t length) noexcept;
 	std::error_condition decompress_data_type_14(std::uint64_t offset, void *buffer, std::size_t length) noexcept;
+	std::error_condition decompress_data_type_93(std::uint64_t offset, void *buffer, std::size_t length) noexcept;
 
 	struct file_header
 	{
@@ -333,7 +345,8 @@ private:
 	static std::mutex                   s_cache_mutex;
 
 	const std::string           m_filename;                 // copy of ZIP filename (for caching)
-	random_read::ptr            m_file;                     // file handle
+	random_read::ptr            m_owned_file;               // file if owned
+	random_read *               m_file = nullptr;           // file handle
 	std::uint64_t               m_length = 0;               // length of zip file
 
 	ecd                         m_ecd;                      // end of central directory
@@ -393,29 +406,15 @@ protected:
 	}
 	std::uint16_t read_word(std::size_t offs) const noexcept
 	{
-		return
-				(std::uint16_t(m_buffer[offs + 1]) << 8) |
-				(std::uint16_t(m_buffer[offs + 0]) << 0);
+		return get_u16le(&m_buffer[offs]);
 	}
 	std::uint32_t read_dword(std::size_t offs) const noexcept
 	{
-		return
-				(std::uint32_t(m_buffer[offs + 3]) << 24) |
-				(std::uint32_t(m_buffer[offs + 2]) << 16) |
-				(std::uint32_t(m_buffer[offs + 1]) << 8) |
-				(std::uint32_t(m_buffer[offs + 0]) << 0);
+		return get_u32le(&m_buffer[offs]);
 	}
 	std::uint64_t read_qword(std::size_t offs) const noexcept
 	{
-		return
-				(std::uint64_t(m_buffer[offs + 7]) << 56) |
-				(std::uint64_t(m_buffer[offs + 6]) << 48) |
-				(std::uint64_t(m_buffer[offs + 5]) << 40) |
-				(std::uint64_t(m_buffer[offs + 4]) << 32) |
-				(std::uint64_t(m_buffer[offs + 3]) << 24) |
-				(std::uint64_t(m_buffer[offs + 2]) << 16) |
-				(std::uint64_t(m_buffer[offs + 1]) << 8) |
-				(std::uint64_t(m_buffer[offs + 0]) << 0);
+		return get_u64le(&m_buffer[offs]);
 	}
 	std::string read_string(std::size_t offs, std::string::size_type len) const
 	{
@@ -471,7 +470,7 @@ public:
 	void                file_name(std::string &result) const    { read_string(result, 0x1e, file_name_length()); }
 	extra_field_reader  extra_field() const noexcept            { return extra_field_reader(m_buffer + 0x1e + file_name_length(), extra_field_length()); }
 
-	bool                signature_correct() const noexcept      { return signature() == 0x04034b50; }
+	bool                signature_correct() const noexcept      { return signature() == pkzip_defs::SIG_LCL_HDR; }
 
 	std::size_t total_length() const noexcept { return minimum_length() + file_name_length() + extra_field_length(); }
 	static constexpr std::size_t minimum_length() { return 0x1e; }
@@ -508,7 +507,7 @@ public:
 	std::string         file_comment() const                    { return read_string(0x2e + file_name_length() + extra_field_length(), file_comment_length()); }
 	void                file_comment(std::string &result) const { read_string(result, 0x2e + file_name_length() + extra_field_length(), file_comment_length()); }
 
-	bool                signature_correct() const noexcept      { return signature() == 0x02014b50; }
+	bool                signature_correct() const noexcept      { return signature() == pkzip_defs::SIG_CD_HDR; }
 
 	std::size_t total_length() const noexcept { return minimum_length() + file_name_length() + extra_field_length() + file_comment_length(); }
 	static constexpr std::size_t minimum_length() { return 0x2e; }
@@ -534,7 +533,7 @@ public:
 	std::uint64_t   dir_offset() const noexcept         { return read_qword(0x30); }
 	void const *    extensible_data() const noexcept    { return m_buffer + 0x38; }
 
-	bool            signature_correct() const noexcept  { return signature() == 0x06064b50; }
+	bool            signature_correct() const noexcept  { return signature() == pkzip_defs::SIG_ECD64; }
 
 	std::size_t total_length() const noexcept { return 0x0c + ecd64_size(); }
 	static constexpr std::size_t minimum_length() { return 0x38; }
@@ -551,7 +550,7 @@ public:
 	std::uint64_t   ecd64_offset() const noexcept       { return read_qword(0x08); }
 	std::uint32_t   total_disks() const noexcept        { return read_dword(0x10); }
 
-	bool            signature_correct() const noexcept  { return signature() == 0x07064b50; }
+	bool            signature_correct() const noexcept  { return signature() == pkzip_defs::SIG_ECD64_LOC; }
 
 	std::size_t total_length() const noexcept { return minimum_length(); }
 	static constexpr std::size_t minimum_length() { return 0x14; }
@@ -574,7 +573,7 @@ public:
 	std::string     comment() const                     { return read_string(0x16, comment_length()); }
 	void            comment(std::string &result) const  { read_string(result, 0x16, comment_length()); }
 
-	bool            signature_correct() const noexcept  { return signature() == 0x06054b50; }
+	bool            signature_correct() const noexcept  { return signature() == pkzip_defs::SIG_ECD; }
 
 	std::size_t total_length() const noexcept { return minimum_length() + comment_length(); }
 	static constexpr std::size_t minimum_length() { return 0x16; }
@@ -593,17 +592,17 @@ public:
 		, m_compressed_size(header.compressed_size())
 		, m_header_offset(header.header_offset())
 		, m_start_disk(header.start_disk())
-		, m_offs_compressed_size(~m_uncompressed_size ? 0 : 8)
-		, m_offs_header_offset(m_offs_compressed_size + (~m_compressed_size ? 0 : 8))
-		, m_offs_start_disk(m_offs_header_offset + (~m_header_offset ? 0 : 8))
-		, m_offs_end(m_offs_start_disk + (~m_start_disk ? 0 : 4))
+		, m_offs_compressed_size((0xffff'ffffU != m_uncompressed_size) ? 0 : 8)
+		, m_offs_header_offset(m_offs_compressed_size + ((0xffff'ffffU != m_compressed_size) ? 0 : 8))
+		, m_offs_start_disk(m_offs_header_offset + ((0xffff'ffffU != m_header_offset) ? 0 : 8))
+		, m_offs_end(m_offs_start_disk + ((0xffffU != m_start_disk) ? 0 : 4))
 	{
 	}
 
-	std::uint64_t   uncompressed_size() const noexcept  { return ~m_uncompressed_size ? m_uncompressed_size : read_qword(0x00); }
-	std::uint64_t   compressed_size() const noexcept    { return ~m_compressed_size ? m_compressed_size : read_qword(m_offs_compressed_size); }
-	std::uint64_t   header_offset() const noexcept      { return ~m_header_offset ? m_header_offset : read_qword(m_offs_header_offset); }
-	std::uint32_t   start_disk() const noexcept         { return ~m_start_disk ? m_start_disk : read_dword(m_offs_start_disk); }
+	std::uint64_t   uncompressed_size() const noexcept  { return (0xffff'ffffU != m_uncompressed_size) ? m_uncompressed_size : read_qword(0x00); }
+	std::uint64_t   compressed_size() const noexcept    { return (0xffff'ffffU != m_compressed_size) ? m_compressed_size : read_qword(m_offs_compressed_size); }
+	std::uint64_t   header_offset() const noexcept      { return (0xffff'ffffU != m_header_offset) ? m_header_offset : read_qword(m_offs_header_offset); }
+	std::uint32_t   start_disk() const noexcept         { return (0xffffU != m_start_disk) ? m_start_disk : read_dword(m_offs_start_disk); }
 
 	std::size_t total_length() const noexcept { return minimum_length() + m_offs_end; }
 	static constexpr std::size_t minimum_length() { return 0x00; }
@@ -694,16 +693,16 @@ class general_flag_reader
 public:
 	general_flag_reader(std::uint16_t val) : m_value(val) { }
 
-	bool        encrypted() const noexcept              { return bool(m_value & 0x0001); }
-	bool        implode_8k_dict() const noexcept        { return bool(m_value & 0x0002); }
-	bool        implode_3_trees() const noexcept        { return bool(m_value & 0x0004); }
+	bool        encrypted() const noexcept              { return bool(m_value & pkzip_defs::GP_FLAG_ENCRYPTED); }
+	bool        implode_8k_dict() const noexcept        { return bool(m_value & pkzip_defs::GP_FLAG_IMPLODE_DICT_8K); }
+	bool        implode_3_trees() const noexcept        { return bool(m_value & pkzip_defs::GP_FLAG_IMPLODE_SFT_3); }
 	unsigned    deflate_option() const noexcept         { return unsigned((m_value >> 1) & 0x0003); }
-	bool        lzma_eos_mark() const noexcept          { return bool(m_value & 0x0002); }
-	bool        use_descriptor() const noexcept         { return bool(m_value & 0x0008); }
-	bool        patch_data() const noexcept             { return bool(m_value & 0x0020); }
-	bool        strong_encryption() const noexcept      { return bool(m_value & 0x0040); }
-	bool        utf8_encoding() const noexcept          { return bool(m_value & 0x0800); }
-	bool        directory_encryption() const noexcept   { return bool(m_value & 0x2000); }
+	bool        lzma_eos_mark() const noexcept          { return bool(m_value & pkzip_defs::GP_FLAG_LZMA_EOS); }
+	bool        use_descriptor() const noexcept         { return bool(m_value & pkzip_defs::GP_FLAG_DATA_DESC); }
+	bool        patch_data() const noexcept             { return bool(m_value & pkzip_defs::GP_FLAG_PATCHED_DATA); }
+	bool        strong_encryption() const noexcept      { return bool(m_value & pkzip_defs::GP_FLAG_ENCRYPTED_STRONG); }
+	bool        utf8_encoding() const noexcept          { return bool(m_value & pkzip_defs::GP_FLAG_UTF8); }
+	bool        directory_encryption() const noexcept   { return bool(m_value & pkzip_defs::GP_FLAG_CD_ENCRYPTED); }
 
 private:
 	std::uint16_t m_value;
@@ -734,7 +733,8 @@ void zip_file_impl::close(ptr &&zip) noexcept
 	{
 		// close the open files
 		osd_printf_verbose("unzip: closing archive file %s and sending to cache\n", zip->m_filename);
-		zip->m_file.reset();
+		zip->m_owned_file.reset();
+		zip->m_file = nullptr;
 
 		// find the first nullptr entry in the cache
 		std::lock_guard<std::mutex> guard(s_cache_mutex);
@@ -809,7 +809,7 @@ int zip_file_impl::search(std::uint32_t search_crc, std::string_view search_file
 			for (auto extra = reader.extra_field(); extra.length_sufficient(); extra = extra.next())
 			{
 				// look for ZIP64 extended info
-				if ((extra.header_id() == 0x0001) && (extra.data_size() >= zip64_ext_info_reader::minimum_length()))
+				if ((extra.header_id() == pkzip_defs::EXTRA_ID_ZIP64) && (extra.data_size() >= zip64_ext_info_reader::minimum_length()))
 				{
 					zip64_ext_info_reader const ext64(reader, extra);
 					if (extra.data_size() >= ext64.total_length())
@@ -822,7 +822,7 @@ int zip_file_impl::search(std::uint32_t search_crc, std::string_view search_file
 				}
 
 				// look for Info-ZIP UTF-8 path
-				if (!is_utf8 && (extra.header_id() == 0x7075) && (extra.data_size() >= utf8_path_reader::minimum_length()))
+				if (!is_utf8 && (extra.header_id() == pkzip_defs::EXTRA_ID_INFO_ZIP_UC_PATH) && (extra.data_size() >= utf8_path_reader::minimum_length()))
 				{
 					utf8_path_reader const utf8path(extra);
 					if (utf8path.version() == 1)
@@ -839,12 +839,12 @@ int zip_file_impl::search(std::uint32_t search_crc, std::string_view search_file
 				}
 
 				// look for NTFS extra field
-				if ((extra.header_id() == 0x000a) && (extra.data_size() >= ntfs_reader::minimum_length()))
+				if ((extra.header_id() == pkzip_defs::EXTRA_ID_NTFS) && (extra.data_size() >= ntfs_reader::minimum_length()))
 				{
 					ntfs_reader const ntfs(extra);
 					for (auto tag = ntfs.tag1(); tag.length_sufficient(); tag = tag.next())
 					{
-						if ((tag.tag() == 0x0001) && (tag.size() >= ntfs_times_reader::minimum_length()))
+						if ((tag.tag() == pkzip_defs::EXTRA_NTFS_TAG_TIMES) && (tag.size() >= ntfs_times_reader::minimum_length()))
 						{
 							ntfs_times_reader const times(tag);
 							ntfs_duration const ticks(times.mtime());
@@ -925,7 +925,7 @@ std::error_condition zip_file_impl::decompress(void *buffer, std::size_t length)
 	}
 
 	// get the compressed data offset
-	std::uint64_t offset;
+	std::uint64_t offset = 0;
 	auto const ziperr = get_compressed_data_offset(offset);
 	if (ziperr)
 		return ziperr;
@@ -933,14 +933,17 @@ std::error_condition zip_file_impl::decompress(void *buffer, std::size_t length)
 	// handle compression types
 	switch (m_header.compression)
 	{
-	case 0:
+	case pkzip_defs::METHOD_STORE:
 		return decompress_data_type_0(offset, buffer, length);
 
-	case 8:
+	case pkzip_defs::METHOD_DEFLATE:
 		return decompress_data_type_8(offset, buffer, length);
 
-	case 14:
+	case pkzip_defs::METHOD_LZMA:
 		return decompress_data_type_14(offset, buffer, length);
+
+	case pkzip_defs::METHOD_ZSTD:
+		return decompress_data_type_93(offset, buffer, length);
 
 	default:
 		osd_printf_error(
@@ -987,7 +990,7 @@ std::error_condition zip_file_impl::read_ecd() noexcept
 		}
 
 		// read in one buffers' worth of data
-		filerr = m_file->read_at(m_length - buflen, &buffer[0], buflen, read_length);
+		std::tie(filerr, read_length) = read_at(*m_file, m_length - buflen, &buffer[0], buflen);
 		if (filerr)
 		{
 			osd_printf_error(
@@ -1013,7 +1016,7 @@ std::error_condition zip_file_impl::read_ecd() noexcept
 		// if we found it, fill out the data
 		if (offset >= 0)
 		{
-			osd_printf_verbose("unzip: found %s ECD\n", m_filename);
+			osd_printf_verbose("unzip: found %s ECD at %d\n", m_filename, offset);
 
 			// extract ECD info
 			ecd_reader const ecd_rd(buffer.get() + offset);
@@ -1032,11 +1035,11 @@ std::error_condition zip_file_impl::read_ecd() noexcept
 			}
 
 			// try to read the ZIP64 ECD locator
-			filerr = m_file->read_at(
+			std::tie(filerr, read_length) = read_at(
+					*m_file,
 					m_length - buflen + offset - ecd64_locator_reader::minimum_length(),
 					&buffer[0],
-					ecd64_locator_reader::minimum_length(),
-					read_length);
+					ecd64_locator_reader::minimum_length());
 			if (filerr)
 			{
 				osd_printf_error(
@@ -1066,7 +1069,7 @@ std::error_condition zip_file_impl::read_ecd() noexcept
 			}
 
 			// try to read the ZIP64 ECD
-			filerr = m_file->read_at(ecd64_loc_rd.ecd64_offset(), &buffer[0], ecd64_reader::minimum_length(), read_length);
+			std::tie(filerr, read_length) = read_at(*m_file, ecd64_loc_rd.ecd64_offset(), &buffer[0], ecd64_reader::minimum_length());
 			if (filerr)
 			{
 				osd_printf_error(
@@ -1168,8 +1171,7 @@ std::error_condition zip_file_impl::get_compressed_data_offset(std::uint64_t &of
 		return ziperr;
 
 	// now go read the fixed-sized part of the local file header
-	std::size_t read_length;
-	std::error_condition const filerr = m_file->read_at(m_header.local_header_offset, &m_buffer[0], local_file_header_reader::minimum_length(), read_length);
+	auto const [filerr, read_length] = read_at(*m_file, m_header.local_header_offset, &m_buffer[0], local_file_header_reader::minimum_length());
 	if (filerr)
 	{
 		osd_printf_error(
@@ -1213,8 +1215,7 @@ std::error_condition zip_file_impl::get_compressed_data_offset(std::uint64_t &of
 std::error_condition zip_file_impl::decompress_data_type_0(std::uint64_t offset, void *buffer, std::size_t length) noexcept
 {
 	// the data is uncompressed; just read it
-	std::size_t read_length(0);
-	std::error_condition const filerr = m_file->read_at(offset, buffer, m_header.compressed_length, read_length);
+	auto const [filerr, read_length] = read_at(*m_file, offset, buffer, m_header.compressed_length);
 	if (filerr)
 	{
 		osd_printf_error(
@@ -1258,7 +1259,7 @@ std::error_condition zip_file_impl::decompress_data_type_8(std::uint64_t offset,
 					return archive_file::error::DECOMPRESS_ERROR;
 				}
 			};
-	std::uint64_t input_remaining = m_header.compressed_length;
+	std::uint64_t input_remaining(m_header.compressed_length);
 	int zerr;
 
 	// reset the stream
@@ -1285,12 +1286,11 @@ std::error_condition zip_file_impl::decompress_data_type_8(std::uint64_t offset,
 	while (true)
 	{
 		// read in the next chunk of data
-		std::size_t read_length(0);
-		auto const filerr = m_file->read_at(
+		auto const [filerr, read_length] = read_at(
+				*m_file,
 				offset,
 				&m_buffer[0],
-				std::size_t((std::min<std::uint64_t>)(input_remaining, m_buffer.size())),
-				read_length);
+				std::size_t(std::min<std::uint64_t>(input_remaining, m_buffer.size())));
 		if (filerr)
 		{
 			osd_printf_error(
@@ -1388,8 +1388,8 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 
 	// reset the stream
 	ISzAlloc alloc_imp;
-	alloc_imp.Alloc = [] (void *p, std::size_t size) -> void * { return size ? std::malloc(size) : nullptr; };
-	alloc_imp.Free = [] (void *p, void *address) -> void { std::free(address); };
+	alloc_imp.Alloc = [] (ISzAllocPtr p, std::size_t size) -> void * { return size ? std::malloc(size) : nullptr; };
+	alloc_imp.Free = [] (ISzAllocPtr p, void *address) -> void { std::free(address); };
 	CLzmaDec stream;
 	LzmaDec_Construct(&stream);
 
@@ -1401,7 +1401,7 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 				m_header.file_name, m_filename);
 		return archive_file::error::DECOMPRESS_ERROR;
 	}
-	filerr = m_file->read_at(offset, &m_buffer[0], 4, read_length);
+	std::tie(filerr, read_length) = read_at(*m_file, offset, &m_buffer[0], 4);
 	if (filerr)
 	{
 		osd_printf_error(
@@ -1418,7 +1418,7 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 				m_header.file_name, m_filename);
 		return archive_file::error::FILE_TRUNCATED;
 	}
-	std::uint16_t const props_size((std::uint16_t(m_buffer[3]) << 8) | std::uint16_t(m_buffer[2]));
+	std::uint16_t const props_size(get_u16le(&m_buffer[2]));
 	if (props_size > m_buffer.size())
 	{
 		osd_printf_error(
@@ -1433,7 +1433,7 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 				m_header.file_name, m_filename);
 		return archive_file::error::DECOMPRESS_ERROR;
 	}
-	filerr = m_file->read_at(offset, &m_buffer[0], props_size, read_length);
+	std::tie(filerr, read_length) = read_at(*m_file, offset, &m_buffer[0], props_size);
 	if (filerr)
 	{
 		osd_printf_error(
@@ -1480,11 +1480,11 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 	while (0 < input_remaining)
 	{
 		// read in the next chunk of data
-		filerr = m_file->read_at(
+		std::tie(filerr, read_length) = read_at(
+				*m_file,
 				offset,
 				&m_buffer[0],
-				std::size_t((std::min<std::uint64_t>)(input_remaining, m_buffer.size())),
-				read_length);
+				std::size_t((std::min<std::uint64_t>)(input_remaining, m_buffer.size())));
 		if (filerr)
 		{
 			osd_printf_error(
@@ -1554,6 +1554,91 @@ std::error_condition zip_file_impl::decompress_data_type_14(std::uint64_t offset
 	}
 }
 
+
+/*-------------------------------------------------
+    decompress_data_type_93 - decompress
+    type 14 data (Zstandard)
+-------------------------------------------------*/
+
+std::error_condition zip_file_impl::decompress_data_type_93(std::uint64_t offset, void *buffer, std::size_t length) noexcept
+{
+	// create decompression stream
+	ZSTD_DStream *const stream(ZSTD_createDStream());
+	if (!stream)
+	{
+		osd_printf_error(
+				"unzip: error allocating Zstandard stream to decompress %s from %s\n",
+				m_header.file_name, m_filename);
+		return std::errc::not_enough_memory;
+	}
+
+	// loop until we're done
+	std::uint64_t input_remaining(m_header.compressed_length);
+	while (input_remaining && length)
+	{
+		// read in the next chunk of data
+		auto const [filerr, read_length] = read_at(
+				*m_file,
+				offset,
+				&m_buffer[0],
+				std::size_t(std::min<std::uint64_t>(input_remaining, m_buffer.size())));
+		if (filerr)
+		{
+			osd_printf_error(
+					"unzip: error reading compressed data for %s in %s (%s:%d %s)\n",
+					m_header.file_name, m_filename, filerr.category().name(), filerr.value(), filerr.message());
+			ZSTD_freeDStream(stream);
+			return filerr;
+		}
+		offset += read_length;
+
+		// if we read nothing, but still have data left, the file is truncated
+		if (!read_length && input_remaining)
+		{
+			osd_printf_error(
+					"unzip: unexpectedly reached end-of-file while reading compressed data for %s in %s\n",
+					m_header.file_name, m_filename);
+			ZSTD_freeDStream(stream);
+			return archive_file::error::FILE_TRUNCATED;
+		}
+
+		// fill out the input data
+		ZSTD_inBuffer input{ &m_buffer[0], read_length, 0 };
+		input_remaining -= read_length;
+
+		// now decompress
+		while ((input.pos < input.size) && length)
+		{
+			ZSTD_outBuffer output{ buffer, length, 0 };
+			auto const result(ZSTD_decompressStream(stream, &output, &input));
+			if (ZSTD_isError(result))
+			{
+				osd_printf_error(
+						"unzip: error decompressing %s from %s (%u: %s)\n",
+						m_header.file_name, m_filename, result, ZSTD_getErrorName(result));
+				ZSTD_freeDStream(stream);
+				return archive_file::error::DECOMPRESS_ERROR;
+			}
+			buffer = reinterpret_cast<std::uint8_t *>(buffer) + output.pos;
+			length -= output.pos;
+		}
+	}
+
+	// free stream
+	ZSTD_freeDStream(stream);
+
+	// if anything looks funny, report an error
+	if (length || input_remaining)
+	{
+		osd_printf_error(
+				"unzip: decompression of %s from %s doesn't appear to have completed correctly\n",
+				m_header.file_name, m_filename);
+		return archive_file::error::DECOMPRESS_ERROR;
+	}
+
+	return std::error_condition();
+}
+
 } // anonymous namespace
 
 
@@ -1591,6 +1676,32 @@ std::error_condition archive_file::open_zip(std::string_view filename, ptr &resu
 		if (err)
 			return err;
 	}
+
+	// allocate the archive API wrapper
+	result.reset(new (std::nothrow) zip_file_wrapper(std::move(newimpl)));
+	if (result)
+	{
+		return std::error_condition();
+	}
+	else
+	{
+		zip_file_impl::close(std::move(newimpl));
+		return std::errc::not_enough_memory;
+	}
+}
+
+std::error_condition archive_file::open_zip(random_read &file, ptr &result) noexcept
+{
+	// ensure we start with a nullptr result
+	result.reset();
+
+	// allocate memory for the zip_file structure
+	zip_file_impl::ptr newimpl(new (std::nothrow) zip_file_impl(file));
+	if (!newimpl)
+		return std::errc::not_enough_memory;
+	auto const err = newimpl->initialize();
+	if (err)
+		return err;
 
 	// allocate the archive API wrapper
 	result.reset(new (std::nothrow) zip_file_wrapper(std::move(newimpl)));

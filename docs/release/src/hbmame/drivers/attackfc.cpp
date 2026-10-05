@@ -64,7 +64,7 @@ private:
 	void sound_w(uint8_t data);
 	TIMER_CALLBACK_MEMBER(interrupt_trigger);
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	DECLARE_WRITE_LINE_MEMBER(int_enable_w);
+	void int_enable_w(int);
 	IRQ_CALLBACK_MEMBER(interrupt_vector);
 	uint8_t vpos_to_vysnc_chain_counter(int vpos);
 	int vysnc_chain_counter_to_vpos(uint8_t counter, int vblank);
@@ -138,7 +138,7 @@ TIMER_CALLBACK_MEMBER(attackfc_state::interrupt_trigger)
 }
 
 
-WRITE_LINE_MEMBER(attackfc_state::int_enable_w)
+void attackfc_state::int_enable_w(int state)
 {
 	m_int_enable = state;
 }
@@ -288,7 +288,7 @@ void attackfc_state::attackfc(machine_config &config)
 	m_maincpu->out_inte_func().set(FUNC(attackfc_state::int_enable_w));
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(MW8080BW_PIXEL_CLOCK, MW8080BW_HTOTAL, MW8080BW_HBEND, MW8080BW_HPIXCOUNT, MW8080BW_VTOTAL, MW8080BW_VBEND, MW8080BW_VBSTART);
 	m_screen->set_screen_update(FUNC(attackfc_state::screen_update));
 

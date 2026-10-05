@@ -1,6 +1,6 @@
 // license:GPL_2.0
 // copyright-holders:Robbbert
-#include "../mame/drivers/taitosj.cpp"
+#include "../mame/taito/taitosj.cpp"
 
 /************
  Alpine Ski

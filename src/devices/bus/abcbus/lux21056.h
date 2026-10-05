@@ -34,18 +34,18 @@ public:
 
 protected:
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	// optional information overrides
-	virtual const tiny_rom_entry *device_rom_region() const override;
-	virtual void device_add_mconfig(machine_config &config) override;
-	virtual ioport_constructor device_input_ports() const override;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 
 	// device_abcbus_interface overrides
 	virtual void abcbus_cs(uint8_t data) override;
-	virtual uint8_t abcbus_inp() override;
-	virtual void abcbus_out(uint8_t data) override;
+	virtual uint8_t abcbus_inp(offs_t offset) override;
+	virtual void abcbus_out(offs_t offset, uint8_t data) override;
 	virtual uint8_t abcbus_stat() override;
 	virtual void abcbus_c1(uint8_t data) override;
 	virtual void abcbus_c3(uint8_t data) override;
@@ -58,11 +58,11 @@ private:
 	uint8_t io_read_byte(offs_t offset);
 	void io_write_byte(offs_t offset, uint8_t data);
 
-	DECLARE_WRITE_LINE_MEMBER( write_sasi_req );
-	DECLARE_WRITE_LINE_MEMBER( write_sasi_io );
-	DECLARE_WRITE_LINE_MEMBER( write_sasi_cd );
-	DECLARE_WRITE_LINE_MEMBER( write_sasi_msg );
-	DECLARE_WRITE_LINE_MEMBER( write_sasi_bsy );
+	void write_sasi_req(int state);
+	void write_sasi_io(int state);
+	void write_sasi_cd(int state);
+	void write_sasi_msg(int state);
+	void write_sasi_bsy(int state);
 
 	uint8_t sasi_status_r();
 	void stat_w(uint8_t data);
@@ -77,8 +77,8 @@ private:
 	uint8_t sasi_rst_r();
 	void sasi_rst_w(uint8_t data);
 
-	void luxor_55_21056_io(address_map &map);
-	void luxor_55_21056_mem(address_map &map);
+	void luxor_55_21056_io(address_map &map) ATTR_COLD;
+	void luxor_55_21056_mem(address_map &map) ATTR_COLD;
 
 	required_device<z80_device> m_maincpu;
 	required_device<z80dma_device> m_dma;

@@ -40,7 +40,7 @@ void abstract_ata_interface_device::set_dasp(int state)
 	m_dasp_handler(state);
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::irq0_write_line )
+void abstract_ata_interface_device::irq0_write_line(int state)
 {
 	if (m_irq[0] != state)
 	{
@@ -50,7 +50,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::irq0_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::irq1_write_line )
+void abstract_ata_interface_device::irq1_write_line(int state)
 {
 	if (m_irq[1] != state)
 	{
@@ -60,7 +60,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::irq1_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::dasp0_write_line )
+void abstract_ata_interface_device::dasp0_write_line(int state)
 {
 	if (m_dasp[0] != state)
 	{
@@ -70,7 +70,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::dasp0_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::dasp1_write_line )
+void abstract_ata_interface_device::dasp1_write_line(int state)
 {
 	if (m_dasp[1] != state)
 	{
@@ -84,7 +84,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::dasp1_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::dmarq0_write_line )
+void abstract_ata_interface_device::dmarq0_write_line(int state)
 {
 	if (m_dmarq[0] != state)
 	{
@@ -94,7 +94,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::dmarq0_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::dmarq1_write_line )
+void abstract_ata_interface_device::dmarq1_write_line(int state)
 {
 	if (m_dmarq[1] != state)
 	{
@@ -104,12 +104,12 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::dmarq1_write_line )
 	}
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::pdiag0_write_line )
+void abstract_ata_interface_device::pdiag0_write_line(int state)
 {
 	m_pdiag[0] = state;
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::pdiag1_write_line )
+void abstract_ata_interface_device::pdiag1_write_line(int state)
 {
 	if (m_pdiag[1] != state)
 	{
@@ -129,39 +129,39 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::pdiag1_write_line )
 
 uint16_t abstract_ata_interface_device::read_dma()
 {
-	uint16_t result = 0xffff;
+	PAIR16 data; data.w = m_default_data;
 	for (auto & elem : m_slot)
 		if (elem->dev() != nullptr)
-			result &= elem->dev()->read_dma();
+			elem->dev()->read_dma(data);
 
-//  logerror( "%s: read_dma %04x\n", machine().describe_context(), result );
-	return result;
+//  logerror( "%s: read_dma %04x\n", machine().describe_context(), data.w );
+	return data.w;
 }
 
-uint16_t abstract_ata_interface_device::internal_read_cs0(offs_t offset, uint16_t mem_mask)
+uint16_t abstract_ata_interface_device::internal_read_cs0(offs_t offset)
 {
-	uint16_t result = mem_mask;
+	PAIR16 data; data.w = m_default_data;
 	for (auto & elem : m_slot)
 		if (elem->dev() != nullptr)
-			result &= elem->dev()->read_cs0(offset, mem_mask);
+			elem->dev()->read_cs0(offset, data);
 
-//  { static int last_status = -1; if (offset == 7 ) { if( result == last_status ) return last_status; last_status = result; } else last_status = -1; }
+//  { static int last_status = -1; if (offset == 7 ) { if( data.b.l == last_status ) return last_status; last_status = data.b.l; } else last_status = -1; }
 
-//  logerror( "%s: read cs0 %04x %04x %04x\n", machine().describe_context(), offset, result, mem_mask );
+//  logerror( "%s: read cs0 %04x %04x\n", machine().describe_context(), offset, data.w );
 
-	return result;
+	return data.w;
 }
 
-uint16_t abstract_ata_interface_device::internal_read_cs1(offs_t offset, uint16_t mem_mask)
+uint16_t abstract_ata_interface_device::internal_read_cs1(offs_t offset)
 {
-	uint16_t result = mem_mask;
+	PAIR16 data; data.w = m_default_data;
 	for (auto & elem : m_slot)
 		if (elem->dev() != nullptr)
-			result &= elem->dev()->read_cs1(offset, mem_mask);
+			elem->dev()->read_cs1(offset, data);
 
-//  logerror( "%s: read cs1 %04x %04x %04x\n", machine().describe_context(), offset, result, mem_mask );
+//  logerror( "%s: read cs1 %04x %04x\n", machine().describe_context(), offset, data.w );
 
-	return result;
+	return data.w;
 }
 
 /*************************************
@@ -179,25 +179,25 @@ void abstract_ata_interface_device::write_dma( uint16_t data )
 			elem->dev()->write_dma(data);
 }
 
-void abstract_ata_interface_device::internal_write_cs0(offs_t offset, uint16_t data, uint16_t mem_mask)
+void abstract_ata_interface_device::internal_write_cs0(offs_t offset, uint16_t data)
 {
-//  logerror( "%s: write cs0 %04x %04x %04x\n", machine().describe_context(), offset, data, mem_mask );
+//  logerror( "%s: write cs0 %04x %04x %04x\n", machine().describe_context(), offset, data );
 
 	for (auto & elem : m_slot)
 		if (elem->dev() != nullptr)
-			elem->dev()->write_cs0(offset, data, mem_mask);
+			elem->dev()->write_cs0(offset, data);
 }
 
-void abstract_ata_interface_device::internal_write_cs1(offs_t offset, uint16_t data, uint16_t mem_mask)
+void abstract_ata_interface_device::internal_write_cs1(offs_t offset, uint16_t data)
 {
-//  logerror( "%s: write cs1 %04x %04x %04x\n", machine().describe_context(), offset, data, mem_mask );
+//  logerror( "%s: write cs1 %04x %04x\n", machine().describe_context(), offset, data );
 
 	for (auto & elem : m_slot)
 		if (elem->dev() != nullptr)
-			elem->dev()->write_cs1(offset, data, mem_mask);
+			elem->dev()->write_cs1(offset, data);
 }
 
-WRITE_LINE_MEMBER( abstract_ata_interface_device::write_dmack )
+void abstract_ata_interface_device::write_dmack(int state)
 {
 //  logerror( "%s: write_dmack %04x\n", machine().describe_context(), state );
 
@@ -209,6 +209,7 @@ WRITE_LINE_MEMBER( abstract_ata_interface_device::write_dmack )
 abstract_ata_interface_device::abstract_ata_interface_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, type, tag, owner, clock),
 	m_slot(*this, "%u", 0U),
+	m_default_data(0xffff),
 	m_irq_handler(*this),
 	m_dmarq_handler(*this),
 	m_dasp_handler(*this)
@@ -230,10 +231,6 @@ ata_interface_device::ata_interface_device(const machine_config &mconfig, const 
 
 void abstract_ata_interface_device::device_start()
 {
-	m_irq_handler.resolve_safe();
-	m_dmarq_handler.resolve_safe();
-	m_dasp_handler.resolve_safe();
-
 	for (int i = 0; i < 2; i++)
 	{
 		m_irq[i] = 0;
@@ -241,27 +238,16 @@ void abstract_ata_interface_device::device_start()
 		m_dasp[i] = 0;
 		m_pdiag[i] = 0;
 
-		device_ata_interface *dev = m_slot[i]->dev();
+		device_ata_interface *const dev = m_slot[i]->dev();
 		if (dev)
-		{
-			if (i == 0)
-			{
-				dev->m_irq_handler.bind().set(*this, FUNC(abstract_ata_interface_device::irq0_write_line));
-				dev->m_dmarq_handler.bind().set(*this, FUNC(abstract_ata_interface_device::dmarq0_write_line));
-				dev->m_dasp_handler.bind().set(*this, FUNC(abstract_ata_interface_device::dasp0_write_line));
-				dev->m_pdiag_handler.bind().set(*this, FUNC(abstract_ata_interface_device::pdiag0_write_line));
-			}
-			else
-			{
-				dev->m_irq_handler.bind().set(*this, FUNC(abstract_ata_interface_device::irq1_write_line));
-				dev->m_dmarq_handler.bind().set(*this, FUNC(abstract_ata_interface_device::dmarq1_write_line));
-				dev->m_dasp_handler.bind().set(*this, FUNC(abstract_ata_interface_device::dasp1_write_line));
-				dev->m_pdiag_handler.bind().set(*this, FUNC(abstract_ata_interface_device::pdiag1_write_line));
-			}
-
 			dev->write_csel(i);
-		}
 	}
+
+	save_item(NAME(m_irq));
+	save_item(NAME(m_dmarq));
+	save_item(NAME(m_dasp));
+	save_item(NAME(m_pdiag));
+	save_item(NAME(m_default_data));
 }
 
 
@@ -271,6 +257,15 @@ void abstract_ata_interface_device::device_start()
 
 void abstract_ata_interface_device::device_add_mconfig(machine_config &config)
 {
-	for (size_t slot = 0; slot < SLOT_COUNT; slot++)
-		ATA_SLOT(config, m_slot[slot]);
+	ATA_SLOT(config, m_slot[0]);
+	m_slot[0]->irq_handler().set(FUNC(abstract_ata_interface_device::irq0_write_line));
+	m_slot[0]->dmarq_handler().set(FUNC(abstract_ata_interface_device::dmarq0_write_line));
+	m_slot[0]->dasp_handler().set(FUNC(abstract_ata_interface_device::dasp0_write_line));
+	m_slot[0]->pdiag_handler().set(FUNC(abstract_ata_interface_device::pdiag0_write_line));
+
+	ATA_SLOT(config, m_slot[1]);
+	m_slot[1]->irq_handler().set(FUNC(abstract_ata_interface_device::irq1_write_line));
+	m_slot[1]->dmarq_handler().set(FUNC(abstract_ata_interface_device::dmarq1_write_line));
+	m_slot[1]->dasp_handler().set(FUNC(abstract_ata_interface_device::dasp1_write_line));
+	m_slot[1]->pdiag_handler().set(FUNC(abstract_ata_interface_device::pdiag1_write_line));
 }

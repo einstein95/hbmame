@@ -31,18 +31,18 @@ public:
 	vtech_floppy_controller_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 protected:
-	virtual const tiny_rom_entry *device_rom_region() const override;
-	virtual void device_add_mconfig(machine_config &config) override;
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
-	virtual void mem_map(address_map &map) override;
-	virtual void io_map(address_map &map) override;
+	virtual void mem_map(address_map &map) override ATTR_COLD;
+	virtual void io_map(address_map &map) override ATTR_COLD;
 
 private:
 	required_device<vtech_memexp_slot_device> m_memexp;
-	required_device<floppy_connector> m_floppy0, m_floppy1;
-	floppy_image_device *m_floppy;
+	required_device_array<floppy_connector, 2> m_floppy;
+	floppy_image_device *m_selected_floppy;
 
 	static void floppy_formats(format_registration &fr);
 
@@ -53,14 +53,11 @@ private:
 
 	void index_callback(floppy_image_device *floppy, int state);
 	void update_latching_inverter();
-	void flush_writes(bool keep_margin = false);
 
 	uint8_t m_latch, m_shifter;
 	bool m_latching_inverter;
 	int m_current_cyl;
 	attotime m_last_latching_inverter_update_time;
-	attotime m_write_start_time, m_write_buffer[32];
-	int m_write_position;
 };
 
 // device type definition

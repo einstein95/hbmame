@@ -7,9 +7,9 @@
 **********************************************************************/
 
 #include "emu.h"
-#include "machine/wd11c00_17.h"
+#include "wd11c00_17.h"
 
-#define VERBOSE 1
+//#define VERBOSE 1
 #include "logmacro.h"
 
 
@@ -49,6 +49,11 @@ DEFINE_DEVICE_TYPE(WD11C00_17, wd11c00_17_device, "wd11c00_17", "Western Digital
 
 inline void wd11c00_17_device::check_interrupt()
 {
+	if ((m_status & STATUS_REQ) && !(m_status & STATUS_C_D))
+		m_status |= STATUS_DRQ;
+	else
+		m_status &= ~STATUS_DRQ;
+
 	if (BIT(m_ra, 10))
 	{
 		m_status &= ~STATUS_DRQ;
@@ -160,6 +165,10 @@ inline void wd11c00_17_device::software_reset()
 
 inline void wd11c00_17_device::select()
 {
+	// force the busy notification below to fire even if the host never
+	// read back the previous command's completion byte (leaving BUSY set)
+	m_busy = 1;
+
 	m_status = STATUS_BUSY | STATUS_C_D | STATUS_REQ;
 
 	check_interrupt();
@@ -183,10 +192,10 @@ wd11c00_17_device::wd11c00_17_device(const machine_config &mconfig, const char *
 	, m_out_busy_cb(*this)
 	, m_out_req_cb(*this)
 	, m_out_ra3_cb(*this)
-	, m_in_rd322_cb(*this)
-	, m_in_ramcs_cb(*this)
+	, m_in_rd322_cb(*this, 0)
+	, m_in_ramcs_cb(*this, 0)
 	, m_out_ramwr_cb(*this)
-	, m_in_cs1010_cb(*this)
+	, m_in_cs1010_cb(*this, 0)
 	, m_out_cs1010_cb(*this)
 	, m_status(0)
 	, m_ra(0)
@@ -205,18 +214,6 @@ wd11c00_17_device::wd11c00_17_device(const machine_config &mconfig, const char *
 
 void wd11c00_17_device::device_start()
 {
-	// resolve callbacks
-	m_out_irq5_cb.resolve_safe();
-	m_out_drq3_cb.resolve_safe();
-	m_out_mr_cb.resolve_safe();
-	m_out_busy_cb.resolve_safe();
-	m_out_req_cb.resolve_safe();
-	m_out_ra3_cb.resolve_safe();
-	m_in_rd322_cb.resolve_safe(0);
-	m_in_ramcs_cb.resolve_safe(0);
-	m_out_ramwr_cb.resolve_safe();
-	m_in_cs1010_cb.resolve_safe(0);
-	m_out_cs1010_cb.resolve_safe();
 }
 
 
@@ -287,7 +284,6 @@ void wd11c00_17_device::io_w(offs_t offset, uint8_t data)
 
 	case 2: // Board Select
 		LOG("%s WD11C00-17 Select\n", machine().describe_context());
-		increment_address(); // HACK
 		select();
 		break;
 
@@ -365,7 +361,6 @@ void wd11c00_17_device::write(offs_t offset, uint8_t data)
 	case 0x00:
 		LOG("%s WD11C00-17 Write RAM %03x:%02x\n", machine().describe_context(), m_ra, data);
 		write_data(data);
-		if (m_ra > 0x400) m_ecc_not_0 = 0; // HACK
 		break;
 
 	case 0x20:
@@ -419,6 +414,8 @@ void wd11c00_17_device::io_w(int state)
 	LOG("%s WD11C00-17 I/O %u\n", machine().describe_context(), state);
 
 	if (state) m_status |= STATUS_I_O; else m_status &= ~STATUS_I_O;
+
+	check_interrupt();
 }
 
 
@@ -431,6 +428,8 @@ void wd11c00_17_device::cd_w(int state)
 	LOG("%s WD11C00-17 C/D %u\n", machine().describe_context(), state);
 
 	if (state) m_status |= STATUS_C_D; else m_status &= ~STATUS_C_D;
+
+	check_interrupt();
 }
 
 
@@ -451,33 +450,10 @@ void wd11c00_17_device::clct_w(int state)
 
 
 //-------------------------------------------------
-//  mode_w -
-//-------------------------------------------------
-
-void wd11c00_17_device::mode_w(int state)
-{
-	LOG("%s WD11C00-17 MODE %u\n", machine().describe_context(), state);
-
-	m_mode = state;
-	m_ecc_not_0 = state; // HACK
-}
-
-
-//-------------------------------------------------
 //  busy_r -
 //-------------------------------------------------
 
 int wd11c00_17_device::busy_r()
 {
 	return (m_status & STATUS_BUSY) ? 0 : 1;
-}
-
-
-//-------------------------------------------------
-//  ecc_not_0_r -
-//-------------------------------------------------
-
-int wd11c00_17_device::ecc_not_0_r()
-{
-	return m_ecc_not_0;
 }

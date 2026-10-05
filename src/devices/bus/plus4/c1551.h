@@ -34,17 +34,13 @@ public:
 
 protected:
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	// optional information overrides
-	virtual const tiny_rom_entry *device_rom_region() const override;
-	virtual void device_add_mconfig(machine_config &config) override;
-	virtual ioport_constructor device_input_ports() const override;
-
-	// device_plus4_expansion_card_interface overrides
-	virtual uint8_t plus4_cd_r(offs_t offset, uint8_t data, int ba, int cs0, int c1l, int c2l, int cs1, int c1h, int c2h) override;
-	virtual void plus4_cd_w(offs_t offset, uint8_t data, int ba, int cs0, int c1l, int c2l, int cs1, int c1h, int c2h) override;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 
 	TIMER_CALLBACK_MEMBER(irq_timer_tick);
 
@@ -64,7 +60,7 @@ private:
 	uint8_t tpi0_r(offs_t offset);
 	void tpi0_w(offs_t offset, uint8_t data);
 
-	void c1551_mem(address_map &map);
+	void c1551_mem(address_map &map) ATTR_COLD;
 
 	static void floppy_formats(format_registration &fr);
 
@@ -74,15 +70,12 @@ private:
 		LED_ACT
 	};
 
-	bool tpi1_selected(offs_t offset);
-
 	required_device<m6510t_device> m_maincpu;
 	required_device<tpi6525_device> m_tpi0;
 	required_device<tpi6525_device> m_tpi1;
 	required_device<c64h156_device> m_ga;
 	required_device<pls100_device> m_pla;
 	required_device<floppy_image_device> m_floppy;
-	required_device<plus4_expansion_slot_device> m_exp;
 	required_ioport m_jp1;
 	output_finder<2> m_leds;
 

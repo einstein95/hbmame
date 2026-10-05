@@ -70,8 +70,6 @@ void mm58167_device::device_start()
 	m_clock_timer = timer_alloc(FUNC(mm58167_device::clock_tick), this);
 	m_clock_timer->adjust(attotime::from_hz(clock() / 32.768f), 0, attotime::from_hz(clock() / 32.768f));
 
-	m_irq_w.resolve_safe();
-
 	// state saving
 	save_item(NAME(m_regs));
 	save_item(NAME(m_milliseconds));
@@ -121,7 +119,7 @@ TIMER_CALLBACK_MEMBER(mm58167_device::clock_tick)
 		if ((m_regs[R_CTL_IRQCONTROL] & 0x80) && m_regs[R_CNT_MONTH]      != old_month)         set_irq(7); // every month
 	}
 
-	m_regs[R_CNT_MILLISECONDS] = time_helper::make_bcd(m_milliseconds % 10);
+	m_regs[R_CNT_MILLISECONDS] = time_helper::make_bcd(m_milliseconds % 10) << 4;
 	m_regs[R_CNT_HUNDTENTHS] = time_helper::make_bcd(m_milliseconds / 10);
 
 	// 10Hz IRQ
@@ -227,10 +225,14 @@ void mm58167_device::write(offs_t offset, uint8_t data)
 		case R_CTL_RESETCOUNTERS:
 			if (data == 0xff)
 			{
-				for (int i = R_CNT_MILLISECONDS; i <= R_CNT_MONTH; i++)
-				{
-					m_regs[i] = 0;
-				}
+				m_regs[R_CNT_MILLISECONDS] = 0;
+				m_regs[R_CNT_HUNDTENTHS] = 0;
+				m_regs[R_CNT_SECONDS] = 0;
+				m_regs[R_CNT_MINUTES] = 0;
+				m_regs[R_CNT_HOURS] = 0;
+				m_regs[R_CNT_DAYOFWEEK] = 1;
+				m_regs[R_CNT_DAYOFMONTH] = 1;
+				m_regs[R_CNT_MONTH] = 1;
 
 				update_rtc();
 			}

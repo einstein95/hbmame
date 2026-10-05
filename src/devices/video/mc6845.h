@@ -36,7 +36,8 @@
 
 
 /* callback definitions */
-#define MC6845_RECONFIGURE(name)  void name(int width, int height, const rectangle &visarea, attoseconds_t frame_period)
+#define MC6845_RECONFIGURE(name)  void name(int width, int height, const rectangle &visarea, attotime frame_period, \
+										  int hsync_on, int hsync_off, int vsync_on, int vsync_off)
 
 #define MC6845_BEGIN_UPDATE(name)  void name(bitmap_rgb32 &bitmap, const rectangle &cliprect)
 
@@ -52,7 +53,8 @@ class mc6845_device :   public device_t,
 						public device_video_interface
 {
 public:
-	typedef device_delegate<void (int width, int height, const rectangle &visarea, attoseconds_t frame_period)> reconfigure_delegate;
+	typedef device_delegate<void (int width, int height, const rectangle &visarea, attotime frame_period,
+			int hsync_on, int hsync_off, int vsync_on, int vsync_off)> reconfigure_delegate;
 	typedef device_delegate<void (bitmap_rgb32 &bitmap, const rectangle &cliprect)> begin_update_delegate;
 	typedef device_delegate<void (bitmap_rgb32 &bitmap, const rectangle &cliprect, uint16_t ma, uint8_t ra,
 									uint16_t y, uint8_t x_count, int8_t cursor_x, int de, int hbp, int vbp)> update_row_delegate;
@@ -62,7 +64,11 @@ public:
 	// construction/destruction
 	mc6845_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
+	void map(address_map &map);
+
+	// HACK: show the full screen_device htotal/vtotal if true (regulate with UI slider controls)
 	void set_show_border_area(bool show) { m_show_border_area = show; }
+	// HACK: a static alternative of above, potentially unsafe.
 	void set_visarea_adjust(int min_x, int max_x, int min_y, int max_y)
 	{
 		m_visarea_adjust_min_x = min_x;
@@ -84,28 +90,29 @@ public:
 	auto out_vsync_callback() { return m_out_vsync_cb.bind(); }
 
 	/* select one of the registers for reading or writing */
-	void address_w(uint8_t data);
+	virtual void address_w(uint8_t data);
 
 	/* read from the status register */
-	uint8_t status_r();
+	// NOTE: subclassed by mos8563
+	virtual uint8_t status_r();
 
 	/* read from the currently selected register */
-	uint8_t register_r();
+	virtual uint8_t register_r();
 
 	/* write to the currently selected register */
-	void register_w(uint8_t data);
+	virtual void register_w(uint8_t data);
 
 	// read display enable line state
-	DECLARE_READ_LINE_MEMBER( de_r );
+	int de_r();
 
 	// read cursor line state
-	DECLARE_READ_LINE_MEMBER( cursor_r );
+	int cursor_r();
 
 	// read horizontal sync line state
-	DECLARE_READ_LINE_MEMBER( hsync_r );
+	int hsync_r();
 
 	// read vertical sync line state
-	DECLARE_READ_LINE_MEMBER( vsync_r );
+	int vsync_r();
 
 	/* return the current value on the MA0-MA13 pins */
 	uint16_t get_ma();
@@ -129,10 +136,11 @@ protected:
 	mc6845_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 
 	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 	virtual void device_post_load() override;
 	virtual void device_clock_changed() override;
+	virtual void device_validity_check(validity_checker &valid) const override;
 
 	attotime cclks_to_attotime(uint64_t clocks) const { return clocks_to_attotime(clocks * m_clk_scale); }
 	uint64_t attotime_to_cclks(const attotime &duration) const { return attotime_to_clocks(duration) / m_clk_scale; }
@@ -298,8 +306,8 @@ public:
 	mc6845_1_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
 };
 
 class r6545_1_device : public mc6845_device
@@ -308,8 +316,8 @@ public:
 	r6545_1_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
 };
 
 class c6545_1_device : public mc6845_device
@@ -318,8 +326,38 @@ public:
 	c6545_1_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
+};
+
+class sy6545_1_device : public mc6845_device
+{
+public:
+	sy6545_1_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
+};
+
+class sy6845e_device : public mc6845_device
+{
+public:
+	sy6845e_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
+};
+
+class ams40489_device : public mc6845_device
+{
+public:
+	ams40489_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
 };
 
 class hd6845s_device : public mc6845_device
@@ -330,29 +368,9 @@ public:
 protected:
 	hd6845s_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+//  virtual void device_reset() override ATTR_COLD;
 	virtual bool check_cursor_visible(uint16_t ra, uint16_t line_addr) override;
-};
-
-class sy6545_1_device : public mc6845_device
-{
-public:
-	sy6545_1_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
-};
-
-class sy6845e_device : public mc6845_device
-{
-public:
-	sy6845e_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
 };
 
 class hd6345_device : public hd6845s_device
@@ -360,13 +378,13 @@ class hd6345_device : public hd6845s_device
 public:
 	hd6345_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	void address_w(uint8_t data);
-	uint8_t register_r();
-	void register_w(uint8_t data);
+	virtual void address_w(uint8_t data) override;
+	virtual uint8_t register_r() override;
+	virtual void register_w(uint8_t data) override;
 
 protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 
 	/* register file */
 	uint8_t   m_disp2_pos;            /* 0x12 */
@@ -390,105 +408,14 @@ protected:
 	virtual uint8_t draw_scanline(int y, bitmap_rgb32 &bitmap, const rectangle &cliprect) override;
 };
 
-class ams40489_device : public mc6845_device
-{
-public:
-	ams40489_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-protected:
-	virtual void device_start() override;
-	virtual void device_reset() override;
-};
-
-class mos8563_device : public mc6845_device,
-						public device_memory_interface,
-						public device_palette_interface
-{
-public:
-	mos8563_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	void address_w(uint8_t data);
-	uint8_t status_r();
-	uint8_t register_r();
-	void register_w(uint8_t data);
-
-	inline uint8_t read_videoram(offs_t offset);
-	inline void write_videoram(offs_t offset, uint8_t data);
-
-	MC6845_UPDATE_ROW( vdc_update_row );
-
-protected:
-	mos8563_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
-
-	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
-
-	// device_memory_interface overrides
-	virtual space_config_vector memory_space_config() const override;
-
-	// device_palette_interface overrides
-	virtual uint32_t palette_entries() const override { return 16; }
-
-	TIMER_CALLBACK_MEMBER(block_copy_tick);
-
-	const address_space_config      m_videoram_space_config;
-
-	uint8_t m_char_buffer[80];
-	uint8_t m_attr_buffer[80];
-
-	bool    m_char_blink_state;
-	uint8_t   m_char_blink_count;
-
-	/* register file */
-	uint16_t  m_attribute_addr;       /* 0x14/0x15 */
-	uint8_t   m_horiz_char;           /* 0x16 */
-	uint8_t   m_vert_char_disp;       /* 0x17 */
-	uint8_t   m_vert_scroll;          /* 0x18 */
-	uint8_t   m_horiz_scroll;         /* 0x19 */
-	uint8_t   m_color;                /* 0x1a */
-	uint8_t   m_row_addr_incr;        /* 0x1b */
-	uint8_t   m_char_base_addr;       /* 0x1c */
-	uint8_t   m_underline_ras;        /* 0x1d */
-	uint8_t   m_word_count;           /* 0x1e */
-	uint8_t   m_data;                 /* 0x1f */
-	uint16_t  m_block_addr;           /* 0x20/0x21 */
-	uint16_t  m_de_begin;             /* 0x22/0x23 */
-	uint8_t   m_dram_refresh;         /* 0x24 */
-	uint8_t   m_sync_polarity;        /* 0x25 */
-
-	int m_revision;
-
-	virtual void update_cursor_state() override;
-	virtual uint8_t draw_scanline(int y, bitmap_rgb32 &bitmap, const rectangle &cliprect) override;
-
-	emu_timer *m_block_copy_timer;
-
-	void mos8563_videoram_map(address_map &map);
-};
-
-class mos8568_device : public mos8563_device
-{
-public:
-	mos8568_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-protected:
-	// device-level overrides
-	virtual void device_start() override;
-	virtual void device_reset() override;
-};
-
-
 DECLARE_DEVICE_TYPE(MC6845,   mc6845_device)
 DECLARE_DEVICE_TYPE(MC6845_1, mc6845_1_device)
 DECLARE_DEVICE_TYPE(R6545_1,  r6545_1_device)
 DECLARE_DEVICE_TYPE(C6545_1,  c6545_1_device)
-DECLARE_DEVICE_TYPE(HD6845S,  hd6845s_device)
 DECLARE_DEVICE_TYPE(SY6545_1, sy6545_1_device)
 DECLARE_DEVICE_TYPE(SY6845E,  sy6845e_device)
-DECLARE_DEVICE_TYPE(HD6345,   hd6345_device)
 DECLARE_DEVICE_TYPE(AMS40489, ams40489_device)
-DECLARE_DEVICE_TYPE(MOS8563,  mos8563_device)
-DECLARE_DEVICE_TYPE(MOS8568,  mos8568_device)
+DECLARE_DEVICE_TYPE(HD6845S,  hd6845s_device)
+DECLARE_DEVICE_TYPE(HD6345,   hd6345_device)
 
 #endif // MAME_VIDEO_MC6845_H

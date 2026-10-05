@@ -2,8 +2,6 @@
 // copyright-holders:Nathan Woods,Tim Lindner
 /*********************************************************************
 
-    hd6309.c
-
     Copyright John Butler
     Copyright Tim Lindner
 
@@ -112,6 +110,10 @@ March 2013 NPW:
     trap, whereas the emulator simply ignores the instruction. Credit to
     Darren Atkinson for the discovery of these bugs.
 
+260629 TJL:
+    Fix cycle count and condition code flags for DIVD and DIVQ based on Xroar
+    (with permission), hoglet67 and personal fuzzing.
+
 *****************************************************************************/
 
 #include "emu.h"
@@ -133,9 +135,7 @@ DEFINE_DEVICE_TYPE(HD6309E, hd6309e_device, "hd6309e", "Hitachi HD6309E")
 //-------------------------------------------------
 
 hd6309_device::hd6309_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, device_type type, int divider) :
-	m6809_base_device(mconfig, tag, owner, clock, type, divider),
-	m_md(0),
-	m_temp_im(0)
+	m6809_base_device(mconfig, tag, owner, clock, type, divider)
 {
 }
 
@@ -172,13 +172,11 @@ void hd6309_device::device_start()
 	state_add(HD6309_U,     "U",    m_u.w).mask(0xffff);
 
 	// initialize variables
-	m_q.q = 0x00000000;
 	m_v.w = 0xffff; // v is initialized to $ffff at reset
 	m_md = 0x00;
 	m_temp_im = 0x00;
 
 	// setup regtable
-	save_item(NAME(m_q.r.w));
 	save_item(NAME(m_v.w));
 	save_item(NAME(m_md));
 	save_item(NAME(m_temp_im));
@@ -446,35 +444,30 @@ inline void hd6309_device::bittest_set(bool result)
 //  read_exgtfr_register
 //-------------------------------------------------
 
-inline m6809_base_device::exgtfr_register hd6309_device::read_exgtfr_register(uint8_t reg)
+inline uint16_t hd6309_device::read_exgtfr_register(uint8_t reg)
 {
-	uint16_t value;
+	uint16_t result = 0;
 
 	switch(reg & 0x0F)
 	{
-		case  0: value = m_q.r.d;                           break;  // D
-		case  1: value = m_x.w;                             break;  // X
-		case  2: value = m_y.w;                             break;  // Y
-		case  3: value = m_u.w;                             break;  // U
-		case  4: value = m_s.w;                             break;  // S
-		case  5: value = m_pc.w;                            break;  // PC
-		case  6: value = m_q.r.w;                           break;  // W
-		case  7: value = m_v.w;                             break;  // V
-		case  8: value = ((uint16_t) m_q.r.a) << 8 | m_q.r.a; break;  // A
-		case  9: value = ((uint16_t) m_q.r.b) << 8 | m_q.r.b; break;  // B
-		case 10: value = ((uint16_t) m_cc) << 8 | m_cc;       break;  // CC
-		case 11: value = ((uint16_t) m_dp) << 8 | m_dp;       break;  // DP
-		case 12: value = 0;                                 break;  // 0
-		case 13: value = 0;                                 break;  // 0
-		case 14: value = ((uint16_t) m_q.r.e) << 8 | m_q.r.e; break;  // E
-		case 15: value = ((uint16_t) m_q.r.f) << 8 | m_q.r.f; break;  // F
-		default:
-			fatalerror("Should not reach here");
+		case  0: result = m_q.r.d;                           break;  // D
+		case  1: result = m_x.w;                             break;  // X
+		case  2: result = m_y.w;                             break;  // Y
+		case  3: result = m_u.w;                             break;  // U
+		case  4: result = m_s.w;                             break;  // S
+		case  5: result = m_pc.w;                            break;  // PC
+		case  6: result = m_q.r.w;                           break;  // W
+		case  7: result = m_v.w;                             break;  // V
+		case  8: result = ((uint16_t) m_q.r.a) << 8 | m_q.r.a; break;  // A
+		case  9: result = ((uint16_t) m_q.r.b) << 8 | m_q.r.b; break;  // B
+		case 10: result = ((uint16_t) m_cc) << 8 | m_cc;       break;  // CC
+		case 11: result = ((uint16_t) m_dp) << 8 | m_dp;       break;  // DP
+		case 12: result = 0;                                   break;  // 0
+		case 13: result = 0;                                   break;  // 0
+		case 14: result = ((uint16_t) m_q.r.e) << 8 | m_q.r.e; break;  // E
+		case 15: result = ((uint16_t) m_q.r.f) << 8 | m_q.r.f; break;  // F
 	}
 
-	exgtfr_register result;
-	result.byte_value = (uint8_t)value;
-	result.word_value = value;
 	return result;
 }
 
@@ -484,28 +477,26 @@ inline m6809_base_device::exgtfr_register hd6309_device::read_exgtfr_register(ui
 //  write_exgtfr_register
 //-------------------------------------------------
 
-inline void hd6309_device::write_exgtfr_register(uint8_t reg, m6809_base_device::exgtfr_register value)
+inline void hd6309_device::write_exgtfr_register(uint8_t reg, uint16_t value)
 {
 	switch(reg & 0x0F)
 	{
-		case  0: m_q.r.d = value.word_value;                break;  // D
-		case  1: m_x.w   = value.word_value;                break;  // X
-		case  2: m_y.w   = value.word_value;                break;  // Y
-		case  3: m_u.w   = value.word_value;                break;  // U
-		case  4: m_s.w   = value.word_value;                break;  // S
-		case  5: m_pc.w  = value.word_value;                break;  // PC
-		case  6: m_q.r.w = value.word_value;                break;  // W
-		case  7: m_v.w   = value.word_value;                break;  // V
-		case  8: m_q.r.a = (uint8_t) (value.word_value >> 8); break;  // A
-		case  9: m_q.r.b = (uint8_t) (value.word_value >> 0); break;  // B
-		case 10: m_cc    = (uint8_t) (value.word_value >> 0); break;  // CC
-		case 11: m_dp    = (uint8_t) (value.word_value >> 8); break;  // DP
-		case 12:                                            break;  // 0
-		case 13:                                            break;  // 0
-		case 14: m_q.r.e = (uint8_t) (value.word_value >> 8); break;  // E
-		case 15: m_q.r.f = (uint8_t) (value.word_value >> 0); break;  // F
-		default:
-			fatalerror("Should not reach here");
+		case  0: m_q.r.d = value;                break;  // D
+		case  1: m_x.w   = value;                break;  // X
+		case  2: m_y.w   = value;                break;  // Y
+		case  3: m_u.w   = value;                break;  // U
+		case  4: m_s.w   = value;                break;  // S
+		case  5: m_pc.w  = value;                break;  // PC
+		case  6: m_q.r.w = value;                break;  // W
+		case  7: m_v.w   = value;                break;  // V
+		case  8: m_q.r.a = (uint8_t) (value >> 8); break;  // A
+		case  9: m_q.r.b = (uint8_t) (value >> 0); break;  // B
+		case 10: m_cc    = (uint8_t) (value >> 0); break;  // CC
+		case 11: m_dp    = (uint8_t) (value >> 8); break;  // DP
+		case 12:                                   break;  // 0
+		case 13:                                   break;  // 0
+		case 14: m_q.r.e = (uint8_t) (value >> 8); break;  // E
+		case 15: m_q.r.f = (uint8_t) (value >> 0); break;  // F
 	}
 }
 
@@ -610,8 +601,6 @@ void hd6309_device::register_register_op()
 		case 13: if (promote) set_regop16(m_temp);  else set_regop8(m_temp.b.l);    break;  // 0
 		case 14: if (promote) set_regop16(m_q.p.w); else set_regop8(m_q.r.e);       break;  // E
 		case 15: if (promote) set_regop16(m_q.p.w); else set_regop8(m_q.r.f);       break;  // F
-		default:
-			fatalerror("Should not reach here");
 	}
 
 	// set source
@@ -633,8 +622,6 @@ void hd6309_device::register_register_op()
 		case 13: m_addressing_mode = ADDRESSING_MODE_ZERO;                                              break;  // 0
 		case 14: m_addressing_mode = promote ? ADDRESSING_MODE_REGISTER_W : ADDRESSING_MODE_REGISTER_E; break;  // E
 		case 15: m_addressing_mode = promote ? ADDRESSING_MODE_REGISTER_W : ADDRESSING_MODE_REGISTER_F; break;  // F
-		default:
-			fatalerror("Should not reach here");
 	}
 
 	// eat a single CPU cycle
@@ -660,50 +647,94 @@ void hd6309_device::muld()
 
 bool hd6309_device::divq()
 {
-	int32_t result;
+	// internal execution base cycles (excludes addressing mode fetch): 24 native, 25 emulation
+	int target_cycles = hd6309_native_mode() ? 24 : 25;
 
 	// check for divide by zero
 	if (m_temp.w == 0)
-		return false;
-
-	int32_t q = m_q.q;
-	int32_t old_q = q;
-
-	// do the divide/modulo
-	result = q / (int16_t) m_temp.w;
-	m_q.r.d = q % (int16_t) m_temp.w;
-
-	// set NZ condition codes
-	m_q.r.w = set_flags<uint16_t>(CC_NZ, result);
-
-	// set C condition code
-	if (m_q.r.w & 0x0001)
-		m_cc |= CC_C;
-	else
-		m_cc &= ~CC_C;
-
-	if ((result > 32768) || (result < -32767))
 	{
-		// soft overflow
-		m_cc |= CC_V;
-
-		if  ((result > 65536 ) || (result < -65535 ))
+		if (!hd6309_native_mode())
 		{
-			// hard overflow - division is aborted
-			if (old_q < 0)
-				m_cc |= CC_N;
-			else if (old_q == 0 )
-				m_cc |= CC_Z;
+			target_cycles -= 2;
+		}
+		eat(target_cycles);
+		return false;
+	}
 
-			m_q.q = old_q;
+	uint32_t tmp1 = m_q.q;
+	uint16_t tmp2 = m_temp.w;
+
+	bool nsign = false;
+	bool vsign = false;
+
+	if ((tmp1 >> 31) & 1)
+	{
+		tmp1 = ~tmp1 + 1;
+		m_q.q = tmp1;
+		nsign = true;
+		target_cycles += 1; // negative dividend: +1 cycle
+	}
+
+	if ((tmp2 >> 15) & 1)
+	{
+		tmp2 = ~tmp2 + 1;
+		vsign = true;
+		target_cycles += 1; // negative divisor: +1 cycle
+	}
+
+	uint32_t quotient  = tmp1 / tmp2;
+	uint16_t remainder = tmp1 % tmp2;
+
+	m_cc &= ~(CC_N | CC_Z | CC_V | CC_C);
+
+	if ((quotient >> 16) != 0)
+	{
+		// range (hard) overflow
+		m_cc |= CC_V;
+		if (nsign)
+		{
+			m_cc |= CC_N;
+		}
+		target_cycles -= 13; // range overflow: -13 cycles
+		eat(target_cycles);
+		return true;
+	}
+
+	if (nsign)
+	{
+		remainder = ~remainder + 1;
+	}
+
+	if (nsign != vsign)
+	{
+		uint32_t new_quotient = ~quotient + 1;
+		if ((new_quotient & 0x8000) && !(quotient & 0x8000))
+		{
+			quotient = new_quotient;
 		}
 	}
-	else
+
+	m_q.r.d = remainder;
+	m_q.r.w = quotient & 0xffffff;
+
+	if (m_q.r.w & 1)
 	{
-		// no overflow
-		m_cc &= ~CC_V;
+		m_cc |= CC_C;
 	}
 
+	// check for 2's complement (soft) overflow
+	if ((((quotient >> 31) ^ (m_q.r.w >> 15)) & 1) == 0)
+	{
+		if (m_q.r.w == 0)     m_cc |= CC_Z;
+		if (m_q.r.w & 0x8000)  m_cc |= CC_N;
+	}
+	else
+	{
+		m_cc |= (CC_N | CC_V);
+		target_cycles -= 1; // 2's complement overflow: -1 cycle
+	}
+
+	eat(target_cycles);
 	return true;
 }
 
@@ -714,44 +745,94 @@ bool hd6309_device::divq()
 
 bool hd6309_device::divd()
 {
+	// internal execution base cycles (excludes addressing mode fetch): 24 native, 25 emulation
+	int target_cycles = hd6309_native_mode() ? 24 : 25;
+
 	// check for divide by zero
 	if (m_temp.b.l == 0)
-		return false;
-
-	int16_t old_d = m_q.r.d;
-	int16_t result;
-
-	// do the divide/modulo
-	result = ((int16_t) m_q.r.d) / (int8_t) m_temp.b.l;
-	m_q.r.a = ((int16_t) m_q.r.d) % (int8_t) m_temp.b.l;
-
-	// set NZ condition codes
-	m_q.r.b = set_flags<uint8_t>(CC_NZ, result);
-
-	// set C condition code
-	if (m_q.r.b & 0x01)
-		m_cc |= CC_C;
-	else
-		m_cc &= ~CC_C;
-
-	if ((result > 128) || (result < -127))
 	{
-		// soft overflow
-		m_cc |= CC_V;
-
-		if ((result > 256 ) || (result < -255 ))
+		if (!hd6309_native_mode())
 		{
-			// hard overflow - division is aborted
-			set_flags<uint16_t>(CC_NZ, old_d);
-			m_q.r.d = abs(old_d);
+			target_cycles -= 2; // emulation mode div-by-zero is 23 internal execution cycles
+		}
+		eat(target_cycles);
+		return false;
+	}
+
+	uint16_t tmp1 = m_q.r.d;
+	uint8_t  tmp2 = m_temp.b.l;
+
+	bool nsign = false;  // dividend sign
+	bool vsign = false;  // divisor sign
+
+	if ((tmp1 >> 15) & 1)
+	{
+		tmp1 = ~tmp1 + 1;
+		m_q.r.d = tmp1;
+		nsign = true;
+		target_cycles += 1; // negative dividend: +1 cycle
+	}
+
+	if ((tmp2 >> 7) & 1)
+	{
+		tmp2 = ~tmp2 + 1;
+		vsign = true;
+		target_cycles += 1; // negative divisor: +1 cycle
+	}
+
+	uint16_t quotient  = tmp1 / tmp2;
+	uint8_t  remainder = tmp1 % tmp2;
+
+	m_cc &= ~(CC_N | CC_Z | CC_V | CC_C);
+
+	if ((quotient >> 8) != 0)
+	{
+		// range (hard) overflow
+		m_cc |= CC_V;
+		if (nsign)
+		{
+			m_cc |= CC_N;
+		}
+		target_cycles -= 13; // range overflow: -13 cycles
+		eat(target_cycles);
+		return true;
+	}
+
+	if (nsign)
+	{
+		remainder = ~remainder + 1;
+	}
+
+	if (nsign != vsign)
+	{
+		uint16_t new_quotient = ~quotient + 1;
+		if ((new_quotient & 0x80) && !(quotient & 0x80))
+		{
+			quotient = new_quotient;
 		}
 	}
-	else
+
+	m_q.r.a = remainder;
+	m_q.r.b = quotient & 0xff;
+
+	if (m_q.r.b & 1)
 	{
-		// no overflow
-		m_cc &= ~CC_V;
+		m_cc |= CC_C;
 	}
 
+	// check for 2's complement (soft) overflow
+	if ((((quotient >> 15) ^ (m_q.r.b >> 7)) & 1) == 0)
+	{
+		if (m_q.r.b == 0)     m_cc |= CC_Z;
+		if (m_q.r.b & 0x80)  m_cc |= CC_N;
+	}
+	else
+	{
+		m_cc |= (CC_N | CC_V);
+		target_cycles -= 1; // 2's complement overflow: -1 cycle
+	}
+
+	eat(target_cycles);
 	return true;
 }
 

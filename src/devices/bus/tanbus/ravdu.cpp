@@ -30,7 +30,7 @@ DEFINE_DEVICE_TYPE(TANBUS_RAVDU, tanbus_ravdu_device, "tanbus_ravdu", "Ralph All
 
 void tanbus_ravdu_device::device_add_mconfig(machine_config &config)
 {
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_refresh_hz(50);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(2500));
 	m_screen->set_size(1536, 624);
@@ -193,7 +193,7 @@ MC6845_UPDATE_ROW(tanbus_ravdu_device::crtc_update_row)
 	}
 }
 
-WRITE_LINE_MEMBER(tanbus_ravdu_device::vsync_changed)
+void tanbus_ravdu_device::vsync_changed(int state)
 {
 	m_trom->dew_w(state);
 }

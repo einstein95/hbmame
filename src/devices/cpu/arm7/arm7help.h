@@ -32,7 +32,7 @@
 #define HandleThumbALUAddFlags(rd, rn, op2)                                                       \
 	set_cpsr(((GET_CPSR & ~(N_MASK | Z_MASK | V_MASK | C_MASK))                                   \
 				| (((!THUMB_SIGN_BITS_DIFFER(rn, op2)) && THUMB_SIGN_BITS_DIFFER(rn, rd)) << V_BIT) \
-				| (((~(rn)) < (op2)) << C_BIT)                                                      \
+				| (((IsNeg(rn) & IsNeg(op2)) | (IsNeg(rn) & IsPos(rd)) | (IsNeg(op2) & IsPos(rd))) ? C_MASK : 0) \
 				| HandleALUNZFlags(rd)));                                                           \
 	R15 += 2;
 
@@ -160,8 +160,3 @@
 #define WRITE32(addr,data)  arm7_cpu_write32(addr,data)
 #define PTR_READ32          &arm7_cpu_read32
 #define PTR_WRITE32         &arm7_cpu_write32
-
-#define LSL(v, s) ((v) << (s))
-#define LSR(v, s) ((v) >> (s))
-#define ROL(v, s) (LSL((v), (s)) | (LSR((v), 32u - (s))))
-#define ROR(v, s) (LSR((v), (s)) | (LSL((v), 32u - (s))))

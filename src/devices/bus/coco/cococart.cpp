@@ -39,7 +39,6 @@
 
 #include "emu.h"
 #include "cococart.h"
-#include "formats/rpk.h"
 
 #include "coco_dcmodem.h"
 #include "coco_fdc.h"
@@ -58,6 +57,7 @@
 #include "coco_sym12.h"
 #include "coco_wpk.h"
 #include "coco_wpk2p.h"
+#include "coco_xsid.h"
 
 #include "dragon_amtor.h"
 #include "dragon_claw.h"
@@ -68,12 +68,13 @@
 #include "dragon_serial.h"
 #include "dragon_sprites.h"
 
+#include "formats/rpk.h"
+
 
 /***************************************************************************
     PARAMETERS
 ***************************************************************************/
 
-//#define LOG_GENERAL   (1U << 0) //defined in logmacro.h already
 #define LOG_CART (1U << 1) // shows cart line changes
 #define LOG_NMI  (1U << 2) // shows switch changes
 #define LOG_HALT (1U << 3) // shows switch changes
@@ -141,7 +142,7 @@ cococart_slot_device::cococart_slot_device(const machine_config &mconfig, const 
 
 void cococart_slot_device::device_start()
 {
-	for(int i=0; i < TIMER_POOL; i++ )
+	for (int i=0; i < TIMER_POOL; i++)
 	{
 		m_cart_line.timer[i]    = timer_alloc(FUNC(cococart_slot_device::cart_line_timer_tick), this);
 		m_nmi_line.timer[i]     = timer_alloc(FUNC(cococart_slot_device::nmi_line_timer_tick), this);
@@ -153,7 +154,6 @@ void cococart_slot_device::device_start()
 	m_cart_line.value           = line_value::CLEAR;
 	m_cart_line.line            = 0;
 	m_cart_line.q_count         = 0;
-	m_cart_callback.resolve();
 	m_cart_line.callback = &m_cart_callback;
 
 	m_nmi_line.timer_index      = 0;
@@ -161,7 +161,6 @@ void cococart_slot_device::device_start()
 	m_nmi_line.value            = line_value::CLEAR;
 	m_nmi_line.line             = 0;
 	m_nmi_line.q_count          = 0;
-	m_nmi_callback.resolve();
 	m_nmi_line.callback = &m_nmi_callback;
 
 	m_halt_line.timer_index     = 0;
@@ -169,7 +168,6 @@ void cococart_slot_device::device_start()
 	m_halt_line.value           = line_value::CLEAR;
 	m_halt_line.line            = 0;
 	m_halt_line.q_count         = 0;
-	m_halt_callback.resolve();
 	m_halt_line.callback = &m_halt_callback;
 
 	m_cart = get_card_device();
@@ -322,8 +320,6 @@ void cococart_slot_device::set_line(line ln, coco_cartridge_line &line, cococart
 		case line::HALT:
 			LOGHALT( "set_line: HALT, value: %s\n", line_value_string(value));
 			break;
-		case line::SOUND_ENABLE:
-			break;
 		}
 
 		// engage in a bit of gymnastics for this odious 'Q' value
@@ -346,9 +342,8 @@ void cococart_slot_device::set_line(line ln, coco_cartridge_line &line, cococart
 				break;
 		}
 
-		/* invoke the callback, if present */
-		if (!(*line.callback).isnull())
-			(*line.callback)(line.line);
+		/* invoke the callback */
+		(*line.callback)(line.line);
 	}
 }
 
@@ -414,11 +409,6 @@ void cococart_slot_device::set_line_value(cococart_slot_device::line which, coco
 
 	case cococart_slot_device::line::HALT:
 		set_line_timer(m_halt_line, value);
-		break;
-
-	case cococart_slot_device::line::SOUND_ENABLE:
-		if (m_cart)
-			m_cart->set_sound_enable(value != cococart_slot_device::line_value::CLEAR);
 		break;
 	}
 }
@@ -518,7 +508,7 @@ void cococart_slot_device::set_cart_base_update(cococart_base_update_delegate up
 //  read_coco_rpk
 //-------------------------------------------------
 
-static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&stream, rpk_file::ptr &result)
+static std::error_condition read_coco_rpk(util::random_read &stream, rpk_file::ptr &result)
 {
 	// sanity checks
 	static_assert(std::size(coco_rpk_pcbdefs) - 1 == std::size(coco_rpk_cardslottypes));
@@ -527,7 +517,7 @@ static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&s
 	rpk_reader reader(coco_rpk_pcbdefs, false);
 
 	// and read the RPK file
-	return reader.read(std::move(stream), result);
+	return reader.read(stream, result);
 }
 
 
@@ -535,13 +525,13 @@ static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&s
 //  read_coco_rpk
 //-------------------------------------------------
 
-static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&stream, u8 *mem, offs_t cart_length, offs_t &actual_length)
+static std::error_condition read_coco_rpk(util::random_read &stream, u8 *mem, offs_t cart_length, offs_t &actual_length)
 {
 	actual_length = 0;
 
 	// open the RPK
 	rpk_file::ptr file;
-	std::error_condition err = read_coco_rpk(std::move(stream), file);
+	std::error_condition err = read_coco_rpk(stream, file);
 	if (err)
 		return err;
 
@@ -560,7 +550,7 @@ static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&s
 			return err;
 
 		// copy the bytes
-		offs_t size = (offs_t) std::min(contents.size(), (size_t)cart_length - pos);
+		size_t const size = std::min<size_t>(contents.size(), cart_length - pos);
 		memcpy(&mem[pos], &contents[0], size);
 		pos += size;
 	}
@@ -575,13 +565,14 @@ static std::error_condition read_coco_rpk(std::unique_ptr<util::random_read> &&s
 //  call_load
 //-------------------------------------------------
 
-image_init_result cococart_slot_device::call_load()
+std::pair<std::error_condition, std::string> cococart_slot_device::call_load()
 {
 	if (m_cart)
 	{
 		memory_region *cart_mem = m_cart->get_cart_memregion();
 		u8 *base = cart_mem->base();
-		offs_t read_length, cart_length = cart_mem->bytes();
+		offs_t read_length = cart_mem->bytes();
+		offs_t cart_length = cart_mem->bytes();
 
 		if (loaded_through_softlist())
 		{
@@ -592,12 +583,9 @@ image_init_result cococart_slot_device::call_load()
 		else if (is_filetype("rpk"))
 		{
 			// RPK file
-			util::core_file::ptr proxy;
-			std::error_condition err = util::core_file::open_proxy(image_core_file(), proxy);
-			if (!err)
-				err = read_coco_rpk(std::move(proxy), base, cart_length, read_length);
+			std::error_condition const err = read_coco_rpk(image_core_file(), base, cart_length, read_length);
 			if (err)
-				return image_init_result::FAIL;
+				return std::make_pair(err, std::string());
 		}
 		else
 		{
@@ -612,7 +600,7 @@ image_init_result cococart_slot_device::call_load()
 			read_length += len;
 		}
 	}
-	return image_init_result::PASS;
+	return std::make_pair(std::error_condition(), std::string());
 }
 
 
@@ -630,10 +618,7 @@ std::string cococart_slot_device::get_default_card_software(get_default_card_sof
 	{
 		// RPK file
 		rpk_file::ptr file;
-		util::core_file::ptr proxy;
-		std::error_condition err = util::core_file::open_proxy(*hook.image_file(), proxy);
-		if (!err)
-			err = read_coco_rpk(std::move(proxy), file);
+		std::error_condition const err = read_coco_rpk(*hook.image_file(), file);
 		if (!err)
 			pcb_type = file->pcb_type();
 	}
@@ -657,7 +642,7 @@ template class device_finder<device_cococart_interface, true>;
 
 device_cococart_interface::device_cococart_interface(const machine_config &mconfig, device_t &device)
 	: device_interface(device, "cococart")
-	, m_owning_slot(nullptr)
+	, m_owning_slot(dynamic_cast<cococart_slot_device *>(device.owner()))
 	, m_host(nullptr)
 {
 }
@@ -678,7 +663,6 @@ device_cococart_interface::~device_cococart_interface()
 
 void device_cococart_interface::interface_config_complete()
 {
-	m_owning_slot = dynamic_cast<cococart_slot_device *>(device().owner());
 	m_host = m_owning_slot
 			? dynamic_cast<device_cococart_host_interface *>(m_owning_slot->owner())
 			: nullptr;
@@ -736,15 +720,6 @@ u8 device_cococart_interface::scs_read(offs_t offset)
 //-------------------------------------------------
 
 void device_cococart_interface::scs_write(offs_t offset, u8 data)
-{
-}
-
-
-//-------------------------------------------------
-//  set_sound_enable
-//-------------------------------------------------
-
-void device_cococart_interface::set_sound_enable(bool sound_enable)
 {
 }
 
@@ -815,6 +790,25 @@ address_space &device_cococart_interface::cartridge_space()
 
 
 //-------------------------------------------------
+//  add_sound_route
+//-------------------------------------------------
+
+void device_cococart_interface::add_sound_route(device_sound_interface &sound_device, int output_index, double gain)
+{
+	host().add_sound_route(sound_device, output_index, gain);
+}
+
+
+//-------------------------------------------------
+//  set_sound_gain
+//-------------------------------------------------
+
+void device_cococart_interface::set_sound_gain(device_sound_interface &sound_device, int output_index, double gain)
+{
+	host().set_sound_gain(sound_device, output_index, gain);
+}
+
+//-------------------------------------------------
 //  set_line_value
 //-------------------------------------------------
 
@@ -831,8 +825,7 @@ void device_cococart_interface::set_line_value(cococart_slot_device::line line, 
 void coco_cart_add_basic_devices(device_slot_interface &device)
 {
 	// basic devices, on both the main slot and the Multi-Pak interface
-	device.option_add_internal("banked_16k", COCO_PAK_BANKED);
-	device.option_add_internal("pak", COCO_PAK);
+	device.option_add("banked_16k", COCO_PAK_BANKED);
 	device.option_add("ccpsg", COCO_PSG);
 	device.option_add("dcmodem", COCO_DCMODEM);
 	device.option_add("gmc", COCO_PAK_GMC);
@@ -840,6 +833,7 @@ void coco_cart_add_basic_devices(device_slot_interface &device)
 	device.option_add("max", COCO_PAK_MAX);
 	device.option_add("midi", COCO_MIDI);
 	device.option_add("orch90", COCO_ORCH90);
+	device.option_add("pak", COCO_PAK);
 	device.option_add("ram", COCO_PAK_RAM);
 	device.option_add("rs232", COCO_RS232);
 	device.option_add("ssc", COCO_SSC);
@@ -848,8 +842,9 @@ void coco_cart_add_basic_devices(device_slot_interface &device)
 	device.option_add("sym12", COCO_SYM12);
 	device.option_add("wpk", COCO_WPK);
 	device.option_add("wpk2", COCO_WPK2);
-	device.option_add("wpkrs", COCO_WPKRS);
 	device.option_add("wpk2p", COCO_WPK2P);
+	device.option_add("wpkrs", COCO_WPKRS);
+	device.option_add("xsid", COCO_XSID);
 }
 
 
@@ -861,12 +856,10 @@ void coco_cart_add_fdcs(device_slot_interface &device)
 {
 	// FDCs are optional because if they are on a Multi-Pak interface, they must
 	// be on Slot 4
-	device.option_add("cc2hdb1", COCO2_HDB1);
-	device.option_add("cc3hdb1", COCO3_HDB1);
 	device.option_add("cd6809_fdc", CD6809_FDC);
 	device.option_add("cp450_fdc", CP450_FDC);
 	device.option_add("fdc", COCO_FDC);
-	device.option_add("fdcv11", COCO_FDC_V11);
+	device.option_add("scii", COCO_SCII);
 }
 
 
@@ -905,6 +898,7 @@ void dragon_cart_add_basic_devices(device_slot_interface &device)
 	device.option_add("stecomp", COCO_STEREO_COMPOSER);
 	device.option_add("sym12", COCO_SYM12);
 	device.option_add("wpk2p", COCO_WPK2P);
+	device.option_add("xsid", COCO_XSID);
 }
 
 

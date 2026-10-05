@@ -19,6 +19,7 @@
 
 // MAME/MAMEUI headers
 #include "emu.h"
+#include "main.h"
 #include "ui/info.h"
 #include "drivenum.h"
 #include "mui_opts.h"
@@ -28,10 +29,6 @@
 #include "mui_util.h"
 #include "treeview.h"
 #include "splitters.h"
-
-#ifdef _MSC_VER
-#define snprintf _snprintf
-#endif
 
 typedef std::string string;
 
@@ -182,7 +179,7 @@ static COLORREF options_get_color(const char *name)
 
 static void options_set_color(const char *name, COLORREF value)
 {
-	char value_str[32];
+	char value_str[32] { };
 
 	if (value == (COLORREF) -1)
 		snprintf(value_str, std::size(value_str), "%d", (int) value);
@@ -346,14 +343,16 @@ UINT GetSavedFolderID(void)
 	return (UINT) settings.int_value(MUIOPTION_DEFAULT_FOLDER_ID);
 }
 
-void SetOverrideRedX(BOOL val)
+void SetOverrideRedX(uint8_t val)
 {
+	if (val > 2)
+		val = 0;
 	settings.setter(MUIOPTION_OVERRIDE_REDX, val);
 }
 
-BOOL GetOverrideRedX(void)
+uint8_t GetOverrideRedX()
 {
-	return settings.bool_value(MUIOPTION_OVERRIDE_REDX);
+	return settings.int_value(MUIOPTION_OVERRIDE_REDX);
 }
 
 static LPBITS GetShowFolderFlags(LPBITS bits)
@@ -365,13 +364,16 @@ static LPBITS GetShowFolderFlags(LPBITS bits)
 		return bits;
 
 	extern const FOLDERDATA g_folderData[];
-	char s[val.size()+1];
-	snprintf(s, val.size()+1, "%s", val.c_str());
+	char* s = strdup(val.c_str());
+	if (!s)
+	{
+		printf("Out of memory in __FILE__ in __func__ at line __LINE__\n");
+		return bits;
+	}
 	char *token = strtok(s, ",");
-	int j;
 	while (token)
 	{
-		for (j=0; g_folderData[j].m_lpTitle; j++)
+		for (int j=0; g_folderData[j].m_lpTitle; j++)
 		{
 			if (strcmp(g_folderData[j].short_name,token) == 0)
 			{
@@ -381,6 +383,7 @@ static LPBITS GetShowFolderFlags(LPBITS bits)
 		}
 		token = strtok(NULL,",");
 	}
+	free(s);
 	return bits;
 }
 
@@ -839,9 +842,9 @@ void GetTextPlayTime(uint32_t driver_index, char *buf)
 		second -= 60*minute;
 
 		if (hour == 0)
-			sprintf(buf, "%d:%02d", minute, second );
+			snprintf(buf, sizeof(buf), "%d:%02d", minute, second );
 		else
-			sprintf(buf, "%d:%02d:%02d", hour, minute, second );
+			snprintf(buf, sizeof(buf), "%d:%02d:%02d", hour, minute, second );
 	}
 }
 
@@ -1229,7 +1232,8 @@ static void CusColorDecodeString(string ss, COLORREF *value)
 	char *s, *p;
 	char tmpStr[256];
 
-	strcpy(tmpStr, str);
+	//strcpy(tmpStr, str);
+	snprintf(tmpStr, sizeof(tmpStr), "%s", str);
 	p = tmpStr;
 
 	for (int i = 0; p && i < 16; i++)
@@ -1265,7 +1269,8 @@ static void ColumnDecodeStringWithCount(string ss, int *value, int count)
 	if (str == NULL)
 		return;
 
-	strcpy(tmpStr, str);
+	//strcpy(tmpStr, str);
+	snprintf(tmpStr, sizeof(tmpStr), "%s", str);
 	p = tmpStr;
 
 	for (int i = 0; p && i < count; i++)
@@ -1297,7 +1302,8 @@ static void SplitterDecodeString(string ss, int *value)
 	char *s, *p;
 	char tmpStr[256];
 
-	strcpy(tmpStr, str);
+	//strcpy(tmpStr, str);
+	snprintf(tmpStr, sizeof(tmpStr), "%s", str);
 	p = tmpStr;
 
 	for (int i = 0; p && i < GetSplitterCount(); i++)
@@ -1350,7 +1356,7 @@ static string FontEncodeString(const LOGFONT *f)
 		return "";
 
 	char s[200];
-	sprintf(s, "%li,%li,%li,%li,%li,%i,%i,%i,%i,%i,%i,%i,%i,%s",
+	snprintf(s, sizeof(s), "%li,%li,%li,%li,%li,%i,%i,%i,%i,%i,%i,%i,%i,%s",
 			f->lfHeight,
 			f->lfWidth,
 			f->lfEscapement,
@@ -1452,7 +1458,7 @@ DWORD GetFolderFlags(int folder_index)
 	LPTREEFOLDER lpFolder = GetFolder(folder_index);
 
 	if (lpFolder)
-		return lpFolder->m_dwFlags & F_MASK;
+		return lpFolder->m_dwFlags & FI_MASK;
 
 	return 0;
 }
@@ -1476,7 +1482,8 @@ void LoadFolderFlags(void)
 			char *ptr;
 
 			// Convert spaces to underscores
-			strcpy(folder_name, lpFolder->m_lpTitle);
+			//strcpy(folder_name, lpFolder->m_lpTitle);
+			snprintf(folder_name, sizeof(folder_name), "%s", lpFolder->m_lpTitle);
 			ptr = folder_name;
 			while (*ptr && *ptr != '\0')
 			{
@@ -1503,7 +1510,8 @@ void LoadFolderFlags(void)
 			char folder_name[400];
 
 			// Convert spaces to underscores
-			strcpy(folder_name, lpFolder->m_lpTitle);
+			//strcpy(folder_name, lpFolder->m_lpTitle);
+			snprintf(folder_name, sizeof(folder_name), "%s", lpFolder->m_lpTitle);
 			char *ptr = folder_name;
 			while (*ptr && *ptr != '\0')
 			{
@@ -1515,7 +1523,7 @@ void LoadFolderFlags(void)
 			string option_name = string(folder_name) + "_filters";
 
 			// get entry and decode it
-			lpFolder->m_dwFlags |= (settings.int_value(option_name.c_str()) & F_MASK);
+			lpFolder->m_dwFlags |= (settings.int_value(option_name.c_str()) & FI_MASK);
 		}
 	}
 }
@@ -1526,7 +1534,7 @@ void LoadFolderFlags(void)
 static void AddFolderFlags()
 {
 	LPTREEFOLDER lpFolder;
-	int num_entries = 0, numFolders = GetNumFolders();
+	int numFolders = GetNumFolders();
 
 	for (int i = 0; i < numFolders; i++)
 	{
@@ -1536,7 +1544,8 @@ static void AddFolderFlags()
 			char folder_name[400];
 
 			// Convert spaces to underscores
-			strcpy(folder_name, lpFolder->m_lpTitle);
+			//strcpy(folder_name, lpFolder->m_lpTitle);
+			snprintf(folder_name, sizeof(folder_name), "%s", lpFolder->m_lpTitle);
 			char *ptr = folder_name;
 			while (*ptr && *ptr != '\0')
 			{
@@ -1549,10 +1558,7 @@ static void AddFolderFlags()
 			string option_name = string(folder_name) + "_filters";
 
 			// store entry
-			settings.setter(option_name.c_str(), lpFolder->m_dwFlags & F_MASK);
-
-			// increment counter
-			num_entries++;
+			settings.setter(option_name.c_str(), lpFolder->m_dwFlags & FI_MASK);
 		}
 	}
 }

@@ -42,8 +42,12 @@
 #include "cbm_crt.h"
 
 #include "corefile.h"
+#include "multibyte.h"
 
 #include "osdcore.h" // osd_printf_*
+
+#include <cstring>
+#include <tuple>
 
 
 //**************************************************************************
@@ -94,7 +98,7 @@ static char const *const CRT_C64_SLOT_NAMES[_CRT_C64_COUNT] =
 	"rex_ep256",        // 27 - Rex EP256
 	"mikroasm",         // 28 - Mikro Assembler
 	UNSUPPORTED,        // 29 - Final Cartridge Plus
-	UNSUPPORTED,        // 30 - Action Replay 4
+	"ar4x",             // 30 - Action Replay 4
 	"stardos",          // 31 - Stardos
 	"easyflash",        // 32 - EasyFlash
 	UNSUPPORTED,        // 33 - EasyFlash Xbank
@@ -118,8 +122,40 @@ static char const *const CRT_C64_SLOT_NAMES[_CRT_C64_COUNT] =
 	"mach5",            // 51 - MACH 5
 	UNSUPPORTED,        // 52 - Diashow-Maker
 	"pagefox",          // 53 - Pagefox
-	UNSUPPORTED,        // 54 - ?
-	"silverrock"        // 55 - Silverrock
+	"kingsoft",         // 54 - Kingsoft
+	"silverrock",       // 55 - Silverrock
+	UNSUPPORTED,        // 56 - Formel 64
+	UNSUPPORTED,        // 57 - RGCD
+	UNSUPPORTED,        // 58 - RR-Net MK3
+	"easycalcres",      // 59 - Easy Calc Result
+	UNSUPPORTED,        // 60 - GMod2
+	UNSUPPORTED,        // 61 - MAX Basic
+	UNSUPPORTED,        // 62 - GMod3
+	UNSUPPORTED,        // 63 - ZIPP-CODE 48
+	UNSUPPORTED,        // 64 - Blackbox V8
+	UNSUPPORTED,        // 65 - Blackbox V3
+	UNSUPPORTED,        // 66 - Blackbox V4
+	UNSUPPORTED,        // 67 - REX RAM-Floppy
+	UNSUPPORTED,        // 68 - BIS-Plus
+	UNSUPPORTED,        // 69 - SD-BOX
+	UNSUPPORTED,        // 70 - MultiMAX
+	UNSUPPORTED,        // 71 - Blackbox V9
+	UNSUPPORTED,        // 72 - Lt. Kernal Host Adaptor
+	UNSUPPORTED,        // 73 - RAMLink
+	UNSUPPORTED,        // 74 - Drean
+	UNSUPPORTED,        // 75 - IEEE Flash! 64
+	UNSUPPORTED,        // 76 - HES Turtle Graphics II
+	UNSUPPORTED,        // 77 - Freeze Frame MK2
+	"partner",          // 78 - Partner 64
+	UNSUPPORTED,        // 79 - Hyper-BASIC
+	UNSUPPORTED,        // 80 - Universal Cartridge 1
+	UNSUPPORTED,        // 81 - Universal Cartridge 1.5
+	UNSUPPORTED,        // 82 - Universal Cartridge 2
+	UNSUPPORTED,        // 83 - BMP Data Turbo 2000
+	UNSUPPORTED,        // 84 - Profi-DOS
+	UNSUPPORTED,        // 85 - Magic Desk 16K
+	UNSUPPORTED,        // 86 - PTV Megabyter
+	UNSUPPORTED         // 87 - Magic Desk Plus
 };
 
 
@@ -132,16 +168,15 @@ static char const *const CRT_C64_SLOT_NAMES[_CRT_C64_COUNT] =
 //  cbm_crt_get_card - get slot interface card
 //-------------------------------------------------
 
-std::string cbm_crt_get_card(util::core_file &file)
+std::string cbm_crt_get_card(util::read_stream &file)
 {
 	// read the header
 	cbm_crt_header header;
-	size_t actual;
-	std::error_condition err = file.read(&header, CRT_HEADER_LENGTH, actual);
+	auto const [err, actual] = read(file, &header, CRT_HEADER_LENGTH);
 
 	if (!err && (CRT_HEADER_LENGTH == actual) && !memcmp(header.signature, CRT_SIGNATURE, 16))
 	{
-		uint16_t hardware = pick_integer_be(header.hardware, 0, 2);
+		uint16_t hardware = get_u16be(header.hardware);
 
 		return std::string(CRT_C64_SLOT_NAMES[hardware]);
 	}
@@ -154,19 +189,21 @@ std::string cbm_crt_get_card(util::core_file &file)
 //  cbm_crt_read_header - read cartridge header
 //-------------------------------------------------
 
-bool cbm_crt_read_header(util::core_file &file, size_t *roml_size, size_t *romh_size, int *exrom, int *game)
+bool cbm_crt_read_header(util::random_read &file, size_t *roml_size, size_t *romh_size, int *exrom, int *game)
 {
+	std::error_condition err;
 	size_t actual;
 
 	// read the header
 	cbm_crt_header header;
-	if (file.read(&header, CRT_HEADER_LENGTH, actual))
+	std::tie(err, actual) = read(file, &header, CRT_HEADER_LENGTH);
+	if (err)
 		return false;
 
 	if ((CRT_HEADER_LENGTH != actual) || (memcmp(header.signature, CRT_SIGNATURE, 16) != 0))
 		return false;
 
-	uint16_t hardware = pick_integer_be(header.hardware, 0, 2);
+	uint16_t hardware = get_u16be(header.hardware);
 	*exrom = header.exrom;
 	*game = header.game;
 
@@ -180,15 +217,20 @@ bool cbm_crt_read_header(util::core_file &file, size_t *roml_size, size_t *romh_
 	}
 
 	// determine ROM region lengths
-	while (!file.eof())
+	while (true)
 	{
 		cbm_crt_chip chip;
-		if (file.read(&chip, CRT_CHIP_LENGTH, actual) || (CRT_CHIP_LENGTH != actual))
+		std::tie(err, actual) = read(file, &chip, CRT_CHIP_LENGTH);
+		if (err)
+			return false;
+		else if (!actual)
+			break;
+		else if (CRT_CHIP_LENGTH != actual)
 			return false;
 
-		const uint16_t address = pick_integer_be(chip.start_address, 0, 2);
-		const uint16_t size = pick_integer_be(chip.image_size, 0, 2);
-		const uint16_t type = pick_integer_be(chip.chip_type, 0, 2);
+		const uint16_t address = get_u16be(chip.start_address);
+		const uint16_t size = get_u16be(chip.image_size);
+		const uint16_t type = get_u16be(chip.chip_type);
 
 		if (LOG)
 		{
@@ -217,7 +259,7 @@ bool cbm_crt_read_header(util::core_file &file, size_t *roml_size, size_t *romh_
 //  cbm_crt_read_data - read cartridge data
 //-------------------------------------------------
 
-bool cbm_crt_read_data(util::core_file &file, uint8_t *roml, uint8_t *romh)
+bool cbm_crt_read_data(util::random_read &file, uint8_t *roml, uint8_t *romh)
 {
 	if (file.seek(CRT_HEADER_LENGTH, SEEK_SET))
 		return false;
@@ -225,26 +267,34 @@ bool cbm_crt_read_data(util::core_file &file, uint8_t *roml, uint8_t *romh)
 	uint32_t roml_offset = 0;
 	uint32_t romh_offset = 0;
 
-	while (!file.eof())
+	while (true)
 	{
+		std::error_condition err;
 		size_t actual;
 
 		cbm_crt_chip chip;
-		if (file.read(&chip, CRT_CHIP_LENGTH, actual) || (CRT_CHIP_LENGTH != actual))
+		std::tie(err, actual) = read(file, &chip, CRT_CHIP_LENGTH);
+		if (err)
+			return false;
+		else if (!actual)
+			break;
+		else if (CRT_CHIP_LENGTH != actual)
 			return false;
 
-		const uint16_t address = pick_integer_be(chip.start_address, 0, 2);
-		const uint16_t size = pick_integer_be(chip.image_size, 0, 2);
+		const uint16_t address = get_u16be(chip.start_address);
+		const uint16_t size = get_u16be(chip.image_size);
 
-		std::error_condition err;
 		switch (address)
 		{
-		case 0x8000: err = file.read(roml + roml_offset, size, actual); roml_offset += size; break;
-		case 0xa000: err = file.read(romh + romh_offset, size, actual); romh_offset += size; break;
-		case 0xe000: err = file.read(romh + romh_offset, size, actual); romh_offset += size; break;
-		// FIXME: surely one needs to report an error or skip over the data if the load address is not recognised?
+		case 0x8000: std::tie(err, actual) = read(file, roml + roml_offset, size); roml_offset += size; break;
+		case 0xa000: std::tie(err, actual) = read(file, romh + romh_offset, size); romh_offset += size; break;
+		case 0xe000: std::tie(err, actual) = read(file, romh + romh_offset, size); romh_offset += size; break;
+		default:
+			if (file.seek(size, SEEK_CUR))
+				return false;
+			continue;
 		}
-		if (err) // TODO: check size - all bets are off if the address isn't recognised anyway
+		if (err || (actual != size))
 			return false;
 	}
 

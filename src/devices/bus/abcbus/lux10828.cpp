@@ -74,11 +74,7 @@ Notes:
 
 /*
 
-    TODO:
-
-    - needs mid-instruction wait state support from Z80 core
-    - inverted A4/5/6/7 chip select
-    - copy protection device (sends sector header bytes to CPU? DDEN is serial clock? code checks for either $b6 or $f7)
+    Copy protection device (sends sector header bytes to CPU? DDEN is serial clock? code checks for either $b6 or $f7)
 
         06F8: ld   a,$2F                    ; SEEK
         06FA: out  ($BC),a
@@ -113,6 +109,9 @@ Notes:
 
 #include "emu.h"
 #include "lux10828.h"
+
+#include "formats/abc800_dsk.h"
+#include "formats/abc800i_dsk.h"
 
 
 
@@ -231,13 +230,13 @@ uint8_t luxor_55_10828_device::pio_pb_r()
 
 	// single/double sided drive
 	uint8_t sw1 = m_sw1->read() & 0x0f;
-	bool ds0 = m_sel0 ? BIT(sw1, 0) : 1;
-	bool ds1 = m_sel1 ? BIT(sw1, 1) : 1;
+	bool ds0 = BIT(m_sel, 0) ? BIT(sw1, 0) : 1;
+	bool ds1 = BIT(m_sel, 1) ? BIT(sw1, 1) : 1;
 	data |= !(ds0 && ds1);
 
 	// single/double density drive
-	bool dd0 = m_sel0 ? BIT(sw1, 2) : 1;
-	bool dd1 = m_sel1 ? BIT(sw1, 3) : 1;
+	bool dd0 = BIT(m_sel, 0) ? BIT(sw1, 2) : 1;
+	bool dd1 = BIT(m_sel, 1) ? BIT(sw1, 3) : 1;
 	data |= !(dd0 && dd1) << 1;
 
 	// TODO ULA output
@@ -302,22 +301,25 @@ static void abc_floppies(device_slot_interface &device)
 void luxor_55_10828_device::floppy_formats(format_registration &fr)
 {
 	fr.add_mfm_containers();
+	fr.add(FLOPPY_ABC800I_FORMAT);
 	fr.add(FLOPPY_ABC800_FORMAT);
 }
 
-WRITE_LINE_MEMBER( luxor_55_10828_device::fdc_intrq_w )
+void luxor_55_10828_device::fdc_intrq_w(int state)
 {
 	m_fdc_irq = state;
 	m_pio->port_b_write(state << 7);
 
-	//if (state) m_maincpu->wait_w(CLEAR_LINE);
+	// release the CPU from the wait state
+	if (state) m_maincpu->set_input_line(Z80_INPUT_LINE_WAIT, CLEAR_LINE);
 }
 
-WRITE_LINE_MEMBER( luxor_55_10828_device::fdc_drq_w )
+void luxor_55_10828_device::fdc_drq_w(int state)
 {
 	m_fdc_drq = state;
 
-	//if (state) m_maincpu->wait_w(CLEAR_LINE);
+	// release the CPU from the wait state
+	if (state) m_maincpu->set_input_line(Z80_INPUT_LINE_WAIT, CLEAR_LINE);
 }
 
 
@@ -343,8 +345,8 @@ void luxor_55_10828_device::device_add_mconfig(machine_config &config)
 	m_fdc->intrq_wr_callback().set(FUNC(luxor_55_10828_device::fdc_intrq_w));
 	m_fdc->drq_wr_callback().set(FUNC(luxor_55_10828_device::fdc_drq_w));
 
-	FLOPPY_CONNECTOR(config, m_floppy0, abc_floppies, "525ssdd", luxor_55_10828_device::floppy_formats).enable_sound(true);
-	FLOPPY_CONNECTOR(config, m_floppy1, abc_floppies, "525ssdd", luxor_55_10828_device::floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, m_floppy[0], abc_floppies, "525ssdd", luxor_55_10828_device::floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, m_floppy[1], abc_floppies, "525ssdd", luxor_55_10828_device::floppy_formats).enable_sound(true);
 }
 
 
@@ -409,8 +411,7 @@ luxor_55_10828_device::luxor_55_10828_device(const machine_config &mconfig, cons
 	m_maincpu(*this, Z80_TAG),
 	m_pio(*this, Z80PIO_TAG),
 	m_fdc(*this, MB8876_TAG),
-	m_floppy0(*this, MB8876_TAG":0"),
-	m_floppy1(*this, MB8876_TAG":1"),
+	m_floppy(*this, MB8876_TAG":%u", 0U),
 	m_sw1(*this, "SW1"),
 	m_s1(*this, "S1"),
 	m_cs(false),
@@ -419,8 +420,7 @@ luxor_55_10828_device::luxor_55_10828_device(const machine_config &mconfig, cons
 	m_fdc_irq(0),
 	m_fdc_drq(0),
 	m_wait_enable(0),
-	m_sel0(0),
-	m_sel1(0)
+	m_sel(0)
 {
 }
 
@@ -438,8 +438,7 @@ void luxor_55_10828_device::device_start()
 	save_item(NAME(m_fdc_irq));
 	save_item(NAME(m_fdc_drq));
 	save_item(NAME(m_wait_enable));
-	save_item(NAME(m_sel0));
-	save_item(NAME(m_sel1));
+	save_item(NAME(m_sel));
 
 	// patch out protection checks (bioses basf6106/mpi02)
 	uint8_t *rom = memregion(Z80_TAG)->base();
@@ -504,7 +503,7 @@ uint8_t luxor_55_10828_device::abcbus_stat()
 //  abcbus_inp -
 //-------------------------------------------------
 
-uint8_t luxor_55_10828_device::abcbus_inp()
+uint8_t luxor_55_10828_device::abcbus_inp(offs_t offset)
 {
 	uint8_t data = 0xff;
 
@@ -527,7 +526,7 @@ uint8_t luxor_55_10828_device::abcbus_inp()
 //  abcbus_out -
 //-------------------------------------------------
 
-void luxor_55_10828_device::abcbus_out(uint8_t data)
+void luxor_55_10828_device::abcbus_out(offs_t offset, uint8_t data)
 {
 	if (m_cs)
 	{
@@ -599,13 +598,12 @@ void luxor_55_10828_device::ctrl_w(uint8_t data)
 		return;
 
 	// drive selection
-	m_sel0 = BIT(data, 0);
-	m_sel1 = BIT(data, 1);
+	m_sel = data & 0x03;
 
 	floppy_image_device *floppy = nullptr;
 
-	if (m_sel0) floppy = m_floppy0->get_device();
-	if (m_sel1) floppy = m_floppy1->get_device();
+	if (BIT(m_sel, 0)) floppy = m_floppy[0]->get_device();
+	if (BIT(m_sel, 1)) floppy = m_floppy[1]->get_device();
 
 	m_fdc->set_floppy(floppy);
 
@@ -658,6 +656,26 @@ void luxor_55_10828_device::status_w(uint8_t data)
 
 
 //-------------------------------------------------
+//  fdc_wait - stall the CPU while _WAIT ENABLE is
+//  asserted and the FDC has no service request
+//  pending
+//-------------------------------------------------
+
+bool luxor_55_10828_device::fdc_wait()
+{
+	if (m_wait_enable || m_fdc_irq || m_fdc_drq)
+		return false;
+
+	// the FDC is not ready, hold the CPU in wait states until INTRQ or DRQ is
+	// asserted and repeat the bus cycle once it has been released
+	m_maincpu->set_input_line(Z80_INPUT_LINE_WAIT, ASSERT_LINE);
+	m_maincpu->retry_access();
+
+	return true;
+}
+
+
+//-------------------------------------------------
 //  fdc_r -
 //-------------------------------------------------
 
@@ -666,22 +684,10 @@ uint8_t luxor_55_10828_device::fdc_r(offs_t offset)
 	if (machine().side_effects_disabled())
 		return 0xff;
 
-	uint8_t data = 0xff;
+	if (fdc_wait())
+		return 0xff;
 
-	if (m_wait_enable)
-	{
-		data = m_fdc->read(offset);
-	}
-	else if (!m_fdc_irq && !m_fdc_drq)
-	{
-		//m_maincpu->wait_w(ASSERT_LINE);
-	}
-	else
-	{
-		data = m_fdc->read(offset);
-	}
-
-	return data;
+	return m_fdc->read(offset);
 }
 
 
@@ -694,10 +700,8 @@ void luxor_55_10828_device::fdc_w(offs_t offset, uint8_t data)
 	if (machine().side_effects_disabled())
 		return;
 
-	m_fdc->write(offset, data);
+	if (fdc_wait())
+		return;
 
-	if (!m_wait_enable && !m_fdc_irq && !m_fdc_drq)
-	{
-		//m_maincpu->wait_w(ASSERT_LINE);
-	}
+	m_fdc->write(offset, data);
 }

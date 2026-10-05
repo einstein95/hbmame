@@ -2037,8 +2037,6 @@ u32 monaco_state::screen_update_monaco(screen_device &screen, bitmap_ind16 &bitm
 
 VIDEO_START_MEMBER( monaco_state, monaco )
 {
-	m_out_digit.resolve();
-
 	m_palette->set_pen_color( 0, 0x00,0x00,0x00 ); /* black (tire) */
 	m_palette->set_pen_color( 1, 0xff,0xff,0xff ); /* white (trim) */
 	/* computer car */
@@ -2116,7 +2114,7 @@ void monaco_state::monaco(machine_config &config)
 	m_maincpu->set_vblank_int("screen", FUNC(monaco_state::monaco_interrupt));
 
 	/* video hardware */
-	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_RASTER));
+	screen_device &screen(SCREEN(config, "screen"));
 	screen.set_refresh_hz(60);
 	screen.set_vblank_time(ATTOSECONDS_IN_USEC(4368));
 	screen.set_size(SCREEN_WIDTH, SCREEN_HEIGHT);

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "utilfwd.h"
+
 #include <type_traits>
 
 
@@ -40,30 +42,15 @@ class osd_interface;
 
 
 //----------------------------------
-// lib/util
-//----------------------------------
-
-// declared in aviio.h
-class avi_file;
-
-// declared in chd.h
-class chd_file;
-
-// declared in unzip.h
-namespace util { class archive_file; }
-
-// declared in xmlfile.h
-namespace util::xml { class data_node; class file; }
-
-
-
-//----------------------------------
 // emu
 //----------------------------------
 
 // declared in addrmap.h
 class address_map;
 class address_map_entry;
+
+// declared in audio_effects/aeffect.h
+class audio_effect;
 
 // declared in bookkeeping.h
 class bookkeeping_manager;
@@ -98,6 +85,7 @@ class symbol_table;
 class debug_breakpoint;
 class debug_watchpoint;
 class debug_registerpoint;
+class debug_exceptionpoint;
 
 // declared in debugger.h
 class debugger_manager;
@@ -107,6 +95,7 @@ class devcb_base;
 template <typename Input, std::make_unsigned_t<Input> DefaultMask> class devcb_write;
 
 // declared in devfind.h
+class device_resolver_base;
 class finder_base;
 template <class DeviceClass, bool Required> class device_finder;
 
@@ -129,8 +118,14 @@ class device_image_interface;
 // declared in dimemory.h
 class device_memory_interface;
 
+// declared in dinetwork.h
+class device_network_interface;
+
 // declared in dipalette.h
 class device_palette_interface;
+
+// declared in disound.h
+class sound_stream;
 
 // declared in distate.h
 class device_state_interface;
@@ -156,7 +151,7 @@ class emu_options;
 class emu_file;
 
 // declared in http.h
-//class http_manager;
+class http_manager;
 
 // declared in gamedrv.h
 class game_driver;
@@ -187,7 +182,11 @@ class running_machine;
 
 // declared in mconfig.h
 namespace emu::detail { class machine_config_replace; }
+struct internal_layout;
 class machine_config;
+
+// declared in main.h
+class machine_manager;
 
 // declared in natkeyboard.h
 class natural_keyboard;
@@ -204,6 +203,9 @@ class render_manager;
 class render_target;
 class render_texture;
 
+// declared in rendertypes.h
+struct render_bounds;
+
 // declared in rendfont.h
 class render_font;
 
@@ -212,6 +214,9 @@ class layout_element;
 class layout_view_item;
 class layout_view;
 class layout_file;
+
+// declared in resampler.h
+class audio_resampler;
 
 // declared in romentry.h
 class rom_entry;
@@ -223,8 +228,8 @@ class rom_load_manager;
 class device_scheduler;
 class emu_timer;
 
-// declared in screen.h
-class screen_device;
+// declared in divo.h
+class device_video_output_interface;
 
 // declared in softlist.h
 class software_info;
@@ -236,10 +241,11 @@ class software_list_loader;
 
 // declared in sound.h
 class sound_manager;
-class sound_stream;
 
 // declared in speaker.h
+class sound_io_device;
 class speaker_device;
+class microphone_device;
 
 // declared in tilemap.h
 class tilemap_device;
@@ -250,7 +256,9 @@ class tilemap_t;
 class ui_manager;
 
 // declared in uiinput.h
+class ui_event_sink;
 class ui_input_manager;
+class ui_input_manager_impl;
 
 // declared in validity.h
 class validity_checker;

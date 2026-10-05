@@ -32,7 +32,6 @@
 #include "screen.h"
 
 
-//#define LOG_GENERAL (1U << 0) //defined in logmacro.h already
 #define LOG_VRAM    (1U << 1)
 #define LOG_CMD     (1U << 2)
 
@@ -157,7 +156,7 @@ void isa8_pgc_device::device_add_mconfig(machine_config &config)
 	m_cpu->set_irq_acknowledge_callback(FUNC(isa8_pgc_device::irq_callback));
 #endif
 
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(XTAL(50'000'000)/2,
 		PGC_TOTAL_HORZ, PGC_HORZ_START, PGC_HORZ_START+PGC_DISP_HORZ,
 		PGC_TOTAL_VERT, PGC_VERT_START, PGC_VERT_START+PGC_DISP_VERT);
@@ -253,7 +252,7 @@ void isa8_pgc_device::device_reset()
 
 //
 
-WRITE_LINE_MEMBER(isa8_pgc_device::vblank_irq)
+void isa8_pgc_device::vblank_irq(int state)
 {
 	if (state)
 	{

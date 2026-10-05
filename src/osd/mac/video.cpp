@@ -21,6 +21,9 @@
 #include "window.h"
 #include "osdmac.h"
 #include "modules/lib/osdlib.h"
+#include "modules/monitor/monitor_module.h"
+
+extern void MacPollInputs(); // in windowcontroller.mm
 
 //============================================================
 //  CONSTANTS
@@ -41,9 +44,6 @@ osd_video_config video_config;
 //============================================================
 //  PROTOTYPES
 //============================================================
-
-static void check_osd_inputs(running_machine &machine);
-
 static void get_resolution(const char *defdata, const char *data, osd_window_config *config, int report_error);
 
 
@@ -63,7 +63,9 @@ bool mac_osd_interface::video_init()
 
 	// initialize the window system so we can make windows
 	if (!window_init())
+	{
 		return false;
+	}
 
 	// create the windows
 	for (index = 0; index < video_config.numscreens; index++)
@@ -73,10 +75,14 @@ bool mac_osd_interface::video_init()
 		get_resolution(options().resolution(), options().resolution(index), &conf, true);
 
 		// create window ...
-		std::shared_ptr<mac_window_info> win = std::make_shared<mac_window_info>(machine(), index, m_monitor_module->pick_monitor(reinterpret_cast<osd_options &>(options()), index), &conf);
+		auto win = std::make_unique<mac_window_info>(machine(), *m_render, index, m_monitor_module->pick_monitor(reinterpret_cast<osd_options &>(options()), index), &conf);
 
 		if (win->window_init())
+		{
 			return false;
+		}
+
+		s_window_list.emplace_back(std::move(win));
 	}
 
 	return true;
@@ -103,58 +109,77 @@ void mac_osd_interface::update(bool skip_redraw)
 	if (!skip_redraw)
 	{
 //      profiler_mark(PROFILER_BLIT);
-		for (auto window : osd_common_t::s_window_list)
+		for (const auto &window : osd_common_t::window_list())
+		{
 			window->update();
+		}
 //      profiler_mark(PROFILER_END);
 	}
 
 	// if we're running, disable some parts of the debugger
 	if ((machine().debug_flags & DEBUG_FLAG_OSD_ENABLED) != 0)
+	{
 		debugger_update();
+	}
 }
 
 //============================================================
 //  input_update
 //============================================================
 
-void mac_osd_interface::input_update()
+void mac_osd_interface::input_update(bool relative_reset)
 {
 	// poll the joystick values here
 	process_events_buf();
-	poll_inputs(machine());
-	check_osd_inputs(machine());
+	MacPollInputs();
+	poll_input_modules(relative_reset);
 }
 
 //============================================================
 //  check_osd_inputs
 //============================================================
 
-static void check_osd_inputs(running_machine &machine)
+void mac_osd_interface::check_osd_inputs()
 {
-	// check for toggling fullscreen mode
-	if (machine.ui_input().pressed(IPT_OSD_1))
+	auto &inp = machine().ui_input();
+
+	// check for toggling fullscreen mode (don't do this in debug mode)
+	if (inp.pressed(IPT_OSD_1) && !(machine().debug_flags & DEBUG_FLAG_OSD_ENABLED))
 	{
-		for (auto curwin : osd_common_t::s_window_list)
-			std::static_pointer_cast<mac_window_info>(curwin)->toggle_full_screen();
+		// destroy the renderers first so that the render module can bounce if it depends on having a window handle
+		for (auto it = window_list().rbegin(); window_list().rend() != it; ++it)
+		{
+			(*it)->renderer_reset();
+		}
+		for (const auto &curwin : window_list())
+		{
+			dynamic_cast<mac_window_info &>(*curwin).toggle_full_screen();
+		}
 	}
 
-	auto window = osd_common_t::s_window_list.front();
+	const auto &window = window_list().front();
 
 	//FIXME: on a per window basis
-	if (machine.ui_input().pressed(IPT_OSD_5))
+	if (inp.pressed(IPT_OSD_5))
 	{
 		video_config.filter = !video_config.filter;
-		machine.ui().popup_time(1, "Filter %s", video_config.filter? "enabled":"disabled");
+		machine().ui().popup_time(1, "Filter %s", video_config.filter? "enabled":"disabled");
 	}
 
-	if (machine.ui_input().pressed(IPT_OSD_6))
-		std::static_pointer_cast<mac_window_info>(window)->modify_prescale(-1);
+	if (inp.pressed(IPT_OSD_6))
+	{
+		dynamic_cast<mac_window_info &>(*window).modify_prescale(-1);
+	}
 
-	if (machine.ui_input().pressed(IPT_OSD_7))
-		std::static_pointer_cast<mac_window_info>(window)->modify_prescale(1);
+	if (inp.pressed(IPT_OSD_7))
+	{
+		dynamic_cast<mac_window_info &>(*window).modify_prescale(1);
+	}
 
-	if (machine.ui_input().pressed(IPT_OSD_8))
+	if (inp.pressed(IPT_OSD_8))
+	{
 		window->renderer().record();
+	}
 }
 
 //============================================================
@@ -163,8 +188,6 @@ static void check_osd_inputs(running_machine &machine)
 
 void mac_osd_interface::extract_video_config()
 {
-	const char *stemp;
-
 	// global options: extract the data
 	video_config.windowed      = options().window();
 	video_config.prescale      = options().prescale();
@@ -173,37 +196,15 @@ void mac_osd_interface::extract_video_config()
 
 	// if we are in debug mode, never go full screen
 	if (machine().debug_flags & DEBUG_FLAG_OSD_ENABLED)
+	{
 		video_config.windowed = true;
-
-	// default to working video please
-	video_config.novideo = 0;
-
-	// d3d options: extract the data
-	stemp = options().video();
-	if (strcmp(stemp, "auto") == 0)
-	{
-		stemp = "opengl";
 	}
 
-	if (strcmp(stemp, OSDOPTVAL_NONE) == 0)
+	// a headless window is never shown; keep it windowed so the fullscreen
+	// switch can't put it on screen
+	if (headless())
 	{
-		video_config.mode = VIDEO_MODE_SOFT;
-		video_config.novideo = 1;
-
-		if (!emulator_info::standalone() && options().seconds_to_run() == 0)
-			osd_printf_warning("Warning: -video none doesn't make much sense without -seconds_to_run\n");
-	}
-
-	else if (strcmp(stemp, MACOPTVAL_OPENGL) == 0)
-		video_config.mode = VIDEO_MODE_OPENGL;
-	else if (strcmp(stemp, MACOPTVAL_BGFX) == 0)
-	{
-		video_config.mode = VIDEO_MODE_BGFX;
-	}
-	else
-	{
-		osd_printf_warning("Invalid video value %s; reverting to OpenGL\n", stemp);
-		video_config.mode = VIDEO_MODE_OPENGL;
+		video_config.windowed = true;
 	}
 
 	video_config.switchres     = options().switch_res();
@@ -219,57 +220,6 @@ void mac_osd_interface::extract_video_config()
 	{
 		osd_printf_warning("Invalid prescale option, reverting to '1'\n");
 		video_config.prescale = 1;
-	}
-
-	// default to working video please
-	video_config.forcepow2texture = options().gl_force_pow2_texture();
-	video_config.allowtexturerect = !(options().gl_no_texture_rect());
-	video_config.vbo         = options().gl_vbo();
-	video_config.pbo         = options().gl_pbo();
-	video_config.glsl        = options().gl_glsl();
-	if ( video_config.glsl )
-	{
-		int i;
-		video_config.glsl_filter = options().glsl_filter();
-		video_config.glsl_shader_mamebm_num=0;
-		for(i=0; i<GLSL_SHADER_MAX; i++)
-		{
-			stemp = options().shader_mame(i);
-			if (stemp && strcmp(stemp, OSDOPTVAL_NONE) != 0 && strlen(stemp)>0)
-			{
-				video_config.glsl_shader_mamebm[i] = (char *) malloc(strlen(stemp)+1);
-				strcpy(video_config.glsl_shader_mamebm[i], stemp);
-				video_config.glsl_shader_mamebm_num++;
-			} else {
-				video_config.glsl_shader_mamebm[i] = nullptr;
-			}
-		}
-		video_config.glsl_shader_scrn_num=0;
-		for(i=0; i<GLSL_SHADER_MAX; i++)
-		{
-			stemp = options().shader_screen(i);
-			if (stemp && strcmp(stemp, OSDOPTVAL_NONE) != 0 && strlen(stemp)>0)
-			{
-				video_config.glsl_shader_scrn[i] = (char *) malloc(strlen(stemp)+1);
-				strcpy(video_config.glsl_shader_scrn[i], stemp);
-				video_config.glsl_shader_scrn_num++;
-			} else {
-				video_config.glsl_shader_scrn[i] = nullptr;
-			}
-		}
-	} else {
-		int i;
-		video_config.glsl_filter = 0;
-		video_config.glsl_shader_mamebm_num=0;
-		for(i=0; i<GLSL_SHADER_MAX; i++)
-		{
-			video_config.glsl_shader_mamebm[i] = nullptr;
-		}
-		video_config.glsl_shader_scrn_num=0;
-		for(i=0; i<GLSL_SHADER_MAX; i++)
-		{
-			video_config.glsl_shader_scrn[i] = nullptr;
-		}
 	}
 
 	// misc options: sanity check values
@@ -293,15 +243,23 @@ static void get_resolution(const char *defdata, const char *data, osd_window_con
 	if (strcmp(data, OSDOPTVAL_AUTO) == 0)
 	{
 		if (strcmp(defdata, OSDOPTVAL_AUTO) == 0)
+		{
 			return;
+		}
 		data = defdata;
 	}
 
 	if (sscanf(data, "%dx%dx%d", &config->width, &config->height, &config->depth) < 2 && report_error)
+	{
 		osd_printf_error("Illegal resolution value = %s\n", data);
+	}
 
 	const char * at_pos = strchr(data, '@');
 	if (at_pos)
+	{
 		if (sscanf(at_pos + 1, "%d", &config->refresh) < 1 && report_error)
+		{
 			osd_printf_error("Illegal refresh rate in resolution value = %s\n", data);
+		}
+	}
 }

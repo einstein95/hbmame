@@ -287,7 +287,7 @@ void schaser_state::apply_effect(uint8_t effect, bool remain)
 			if (!m_555_is_low)
 			{
 				if (remain)
-					m_555_time_remain = m_555_timer->time_left();
+					m_555_time_remain = m_555_timer->remaining();
 				else
 					m_555_time_remain = attotime::zero;
 
@@ -560,7 +560,7 @@ void schaser_state::schaser(machine_config &config)
 	TIMER(config, "timer_555").configure_generic(FUNC(schaser_state::effect_555_cb));
 
 	/* video hardware */
-	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	SCREEN(config, m_screen);
 	m_screen->set_raw(MW8080BW_PIXEL_CLOCK, MW8080BW_HTOTAL, MW8080BW_HBEND, MW8080BW_HPIXCOUNT, MW8080BW_VTOTAL, MW8080BW_VBEND, MW8080BW_VBSTART);
 	m_screen->set_screen_update(FUNC(schaser_state::screen_update_schaser));
 	PALETTE(config, m_palette, palette_device::RBG_3BIT);

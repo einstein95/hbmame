@@ -39,8 +39,7 @@ public:
 	{
 		CART,             // connects to PIA1 CB1
 		NMI,              // connects to NMI line on CPU
-		HALT,             // connects to HALT line on CPU
-		SOUND_ENABLE      // sound enable
+		HALT              // connects to HALT line on CPU
 	};
 
 	// since we have a special value "Q" - we have to use a special enum here
@@ -56,10 +55,7 @@ public:
 	cococart_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock, T &&opts, const char *dflt)
 		: cococart_slot_device(mconfig, tag, owner, clock)
 	{
-		option_reset();
-		opts(*this);
-		set_default_option(dflt);
-		set_fixed(false);
+		set_options(std::forward<T>(opts), dflt, false);
 	}
 	cococart_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock);
 
@@ -67,17 +63,17 @@ public:
 	auto nmi_callback() { return m_nmi_callback.bind(); }
 	auto halt_callback() { return m_halt_callback.bind(); }
 
-	// device-level overrides
-	virtual void device_start() override;
+	// device_t implementation
+	virtual void device_start() override ATTR_COLD;
 
-	// image-level overrides
-	virtual image_init_result call_load() override;
+	// device_image_interface implementation
+	virtual std::pair<std::error_condition, std::string> call_load() override;
 
 	virtual bool is_reset_on_load() const noexcept override { return true; }
 	virtual const char *image_interface() const noexcept override { return "coco_cart"; }
 	virtual const char *file_extensions() const noexcept override { return "ccc,rom"; }
 
-	// slot interface overrides
+	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
 
 	// reading and writing to $C000-$FFEF
@@ -143,7 +139,7 @@ public:
 	static const char *line_value_string(line_value value);
 };
 
-// device type definition
+// device type declaration
 DECLARE_DEVICE_TYPE(COCOCART_SLOT, cococart_slot_device)
 
 
@@ -154,6 +150,8 @@ class device_cococart_host_interface
 {
 public:
 	virtual address_space &cartridge_space() = 0;
+	virtual void add_sound_route(device_sound_interface &sound_device, int output_index, double gain) = 0;
+	virtual void set_sound_gain(device_sound_interface &sound_device, int output_index, double gain) = 0;
 };
 
 
@@ -169,7 +167,6 @@ public:
 	virtual void cts_write(offs_t offset, u8 data);
 	virtual u8 scs_read(offs_t offset);
 	virtual void scs_write(offs_t offset, u8 data);
-	virtual void set_sound_enable(bool sound_enable);
 
 	virtual u8 *get_cart_base();
 	virtual u32 get_cart_size();
@@ -192,6 +189,8 @@ protected:
 	// cartridges (e.g. - Orch-90, Multi-Pak interface) for their control registers, independently
 	// of the SCS or CTS lines
 	address_space &cartridge_space();
+	virtual void add_sound_route(device_sound_interface &sound_device, int output_index, double gain);
+	virtual void set_sound_gain(device_sound_interface &sound_device, int output_index, double gain);
 	template <typename R>
 	void install_read_handler(u16 addrstart, u16 addrend, R &&rhandler)
 	{
@@ -221,7 +220,7 @@ protected:
 
 private:
 	cococart_base_update_delegate    m_update;
-	cococart_slot_device *           m_owning_slot;
+	cococart_slot_device * const     m_owning_slot;
 	device_cococart_host_interface * m_host;
 };
 

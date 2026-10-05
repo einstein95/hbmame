@@ -33,9 +33,8 @@ device_portfolio_expansion_slot_interface::device_portfolio_expansion_slot_inter
 	m_slot = dynamic_cast<portfolio_expansion_slot_device *>(device.owner());
 }
 
-WRITE_LINE_MEMBER( device_portfolio_expansion_slot_interface::eint_w ) { m_slot->eint_w(state); }
-WRITE_LINE_MEMBER( device_portfolio_expansion_slot_interface::nmio_w ) { m_slot->nmio_w(state); }
-WRITE_LINE_MEMBER( device_portfolio_expansion_slot_interface::wake_w ) { m_slot->wake_w(state); }
+void device_portfolio_expansion_slot_interface::eint_w(int state) { m_slot->eint_w(state); }
+void device_portfolio_expansion_slot_interface::wake_w(int state) { m_slot->wake_w(state); }
 
 
 
@@ -50,8 +49,9 @@ WRITE_LINE_MEMBER( device_portfolio_expansion_slot_interface::wake_w ) { m_slot-
 portfolio_expansion_slot_device::portfolio_expansion_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, PORTFOLIO_EXPANSION_SLOT, tag, owner, clock),
 	device_single_card_slot_interface<device_portfolio_expansion_slot_interface>(mconfig, *this),
+	m_memspace(*this, finder_base::DUMMY_TAG, -1),
+	m_iospace(*this, finder_base::DUMMY_TAG, -1),
 	m_write_eint(*this),
-	m_write_nmio(*this),
 	m_write_wake(*this),
 	m_card(nullptr)
 {
@@ -65,11 +65,6 @@ portfolio_expansion_slot_device::portfolio_expansion_slot_device(const machine_c
 void portfolio_expansion_slot_device::device_start()
 {
 	m_card = get_card_device();
-
-	// resolve callbacks
-	m_write_eint.resolve_safe();
-	m_write_nmio.resolve_safe();
-	m_write_wake.resolve_safe();
 }
 
 

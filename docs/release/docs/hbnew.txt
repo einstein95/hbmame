@@ -1,7 +1,234 @@
 ﻿What's new in HBMAME
 ====================
 
-2026-0x-xx 0.245.31
+2026-1x-xx 0.290.1
+
+
+
+New Games
+---------------------------------
+
+
+Updated Games
+---------------------------------
+
+
+
+
+2026-09-29 0.289.3
+
+
+
+New Games
+---------------------------------
+- [dkongt]              Donkey Kong Test Rom v1.00
+- [dkongjrt]            Donkey Kong Junior Test Rom v1.00
+- [exedexes01]          Exed Exes (Recreation of loctest ver, 2026-09-21)
+- [gngaenh]             Ghosts'n Goblins (Enhanced) (World? set 2)
+- [gngbenh]             Ghosts'n Goblins (Enhanced) (World? set 3)
+- [gngcenh]             Ghosts'n Goblins (Enhanced) (World? set 4)
+- [gngenh]              Ghosts'n Goblins (Enhanced) (World? set 1)
+- [gngknightaenh]       Ghosts'n Goblins - Knight Artoria Edition (Enhanced) (World? 2)
+- [gngknightbenh]       Ghosts'n Goblins - Knight Artoria Edition (Enhanced) (World? 3)
+- [gngknightcenh]       Ghosts'n Goblins - Knight Artoria Edition (Enhanced) (World? 4)
+- [gngknightenh]        Ghosts'n Goblins - Knight Artoria Edition (Enhanced) (World? 1)
+- [gngknighttenh]       Ghosts'n Goblins - Knight Artoria Edition (Enhanced) (US)
+- [gngmaidenaenh]       Ghosts'n Goblins - Maiden Artoria Edition (Enhanced) (World? 2)
+- [gngmaidenbenh]       Ghosts'n Goblins - Maiden Artoria Edition (Enhanced) (World? 3)
+- [gngmaidencenh]       Ghosts'n Goblins - Maiden Artoria Edition (Enhanced) (World? 4)
+- [gngmaidenenh]        Ghosts'n Goblins - Maiden Artoria Edition (Enhanced) (World? 1)
+- [gngmaidentenh]       Ghosts'n Goblins - Maiden Artoria Edition (Enhanced) (US)
+- [gngtenh]             Ghosts'n Goblins (Enhanced) (US)
+- [hyxevious01]         Hyper Xevious (2026-09-10)
+- [lhpb]                Last Hope (Pink Bullets, hack, v1.0)
+- [lhpb01]              Last Hope (Pink Bullets, hack, v1.2)
+- [makaimurbenh]        Makaimura (Enhanced) (Japan revision B)
+- [makaimurcenh]        Makaimura (Enhanced) (Japan revision C)
+- [makaimurenh]         Makaimura (Enhanced) (Japan revision A?)
+- [makaimurgenh]        Makaimura (Enhanced) (Japan revision G)
+- [makknightbenh]       Makaimura - Knight Artoria Edition (Enhanced) (Japan revision B)
+- [makknightcenh]       Makaimura - Knight Artoria Edition (Enhanced) (Japan revision C)
+- [makknightenh]        Makaimura - Knight Artoria Edition (Enhanced)
+- [makknightgenh]       Makaimura - Knight Artoria Edition (Enhanced) (Japan revision G)
+- [makmaidenbenh]       Makaimura - Maiden Artoria Edition (Enhanced) (Japan revision B)
+- [makmaidencenh]       Makaimura - Maiden Artoria Edition (Enhanced) (Japan revision C)
+- [makmaidenenh]        Makaimura - Maiden Artoria Edition (Enhanced)
+- [makmaidengenh]       Makaimura - Maiden Artoria Edition (Enhanced) (Japan revision G)
+- [mshvsfej]            Marvel Super Heroes Vs. Street Fighter EX (970707J, 2026-09-17)
+- [mshvsfex]            Marvel Super Heroes Vs. Street Fighter EX (970625U, 2026-09-17)
+- [mshvsfrj]            Marvel Super Heroes Vs. Street Fighter (970707J, Restoration, 2026-09-17)
+- [mshvsfru]            Marvel Super Heroes Vs. Street Fighter (970625U, English Restoration, 2026-09-17)
+- [mslug5s01]           Metal Slug 5 Remake v2
+- [mslug5s02]           Metal Slug 5 Extend Ver
+- [sfz2alr]             Street Fighter Zero 2 Alpha (960805A, English Restoration, 2026-09-17)
+- [ssf2tgmc]            Super Street Fighter II Turbo: Grand Master Challenge (940311J, English Restoration, 2026-09-17)
+- [ssf2tuc]             Super Street Fighter II EX: The Ultimate Championship (940223U, 2026-09-17)
+- [ssf2xuc]             Super Street Fighter II EX: The Ultimate Championship (940223J, 2026-09-17)
+
+
+Updated Games
+---------------------------------
+- [cd_ssrpg]            Samurai Spirits RPG (English) v1.1
+- [ffightjs01]          Final Fight EX (Japan, 2026-09-17)
+- [ffightus01]          Final Fight EX (USA, 2026-09-17)
+- [sfa2d]               Street Fighter Alpha 2 Dash (960826, PS2 Backport, 2026-09-17)
+- [sfa2g]               Street Fighter Alpha 2 Gold (960826, PS2 Backport, 2026-09-17)
+- [sfz2d]               Street Fighter Zero 2 Dash (960805J, PS2 Backport, 2026-09-17)
+- [sfz2da]              Street Fighter Zero 2 Dash (960826, English, PS2 Backport, 2026-09-17)
+- [vhunt2s01]           Night Warriors 2: Darkstalkers Revenge (970929J, English, 2026-09-17)
+- [vsav2s04]            Vampire Savior 2: The Lord of Vampire (970913J, English, 2026-09-17)
+
+
+
+
+2026-09-03 0.289.2
+
+
+
+New Games
+---------------------------------
+- [cd_alice]            We Love Alice demo[CD]
+- [cd_chelnov]          Atomic Runner Chelnov (Neo-Geo port)[CD]
+- [cd_diff]             DIFF demo[CD]
+- [cd_eira]             Eira demo[CD]
+- [cd_ffury]            Fatal Fury - Album Edition[CD]
+- [cd_fukkireta]        Neo Fukkireta demo[CD]
+- [cd_gaxe]             Golden Axe (Neo-Geo port)[CD]
+- [cd_gaxearr]          Golden Axe (v1.0) (PS2 Sega Ages Arranged)[CD]
+- [cd_natademo]         NATADEMO Rel.05[CD]
+- [cd_ngdark]           NGD::ARK(2012-05-04)[CD]
+- [cd_noneon]           No Neo - No Party demo[CD]
+- [cd_ntris3d           N*tris3D Techdemo[CD]
+- [cd_phoenix]          Phoenix(v013)[CD]
+- [cd_pong]             Pong[CD]
+- [cd_pow]              P.O.W. (Neo-Geo port)[CD]
+- [cd_pow2]             P.O.W. (update)[CD]
+- [cd_shinobiarr]       Shinobi Arranged v1.1 (Neo-Geo port)[CD]
+- [cd_speedball]        Speedball2 v1.0.0 demo[CD]
+- [cd_ssrpg]            Samurai Spirits RPG (English)[CD]
+- [cd_subspecies]       Subspecies_Unfinished demo[CD]
+- [cd_visualnovel]      Visual Novel demo (2016-03-31)[CD]
+- [cothello01]          Computer Othello (English)
+- [doomgeo]             Doom Geo demo
+- [ffightjs01]          Final Fight (Japan, CD cutscenes, 2026-08-25)
+- [ffightus01]          Final Fight (USA, CD cutscenes, 2026-08-25)
+- [freedoom]            Freedoom demo (v0.13.0)
+- [ghoulsknight]        Ghouls'n Ghosts - Knight Artoria Edition (World)
+- [ghoulsmaiden]        Ghouls'n Ghosts - Maiden Artoria Edition (World)
+- [ghoulsuknight]       Ghouls'n Ghosts - Knight Artoria Edition (USA)
+- [ghoulsumaiden]       Ghouls'n Ghosts - Maiden Artoria Edition (USA)
+- [daimakaiknight]      Ghouls'n Ghosts - Knight Artoria Edition (Japan)
+- [daimakaimaiden]      Ghouls'n Ghosts - Maiden Artoria Edition (Japan)
+- [kof2001s53]          Kof2001 (Red Arrener, 2026-08-14)
+- [rickdx]              Rick Dangerous DX
+- [sfa2d]               Street Fighter Alpha 2 Dash (960826, PS2 Backport, 2026-08-27)
+- [sfa2g]               Street Fighter Alpha 2 Gold (960826, PS2 Backport, 2026-08-27)
+- [sfz2d]               Street Fighter Zero 2 Dash (960805J, PS2 Backport, 2026-08-27)
+- [sfz2da]              Street Fighter Zero 2 Dash (960826, English, PS2 Backport, 2026-08-27)
+- [smbn]                Super Mario Bros. (Neo Geo)
+- [wjammers04]          Windjammers (Endless Breeze)
+
+
+Updated Games
+---------------------------------
+- [sengoku2s01]         Sengoku 2 (Red Blood, v1.18)
+- [sf2prime]            Street Fighter II': Prime (v0.80)
+
+
+
+
+2026-08-03 0.289.1
+
+- Added the saving of overclocking adjustments [BlackDeath]
+- Restored the PGM homebrew (pgmfrog, pgmdemo, pgemeni)
+- HBMAMEUI: Fixed the splash screen
+- HBMAMEUI: Improved plugins process
+- HBMAMEUI: Fixed icon issues
+
+
+New Games
+---------------------------------
+- [adkw]                ADK World
+- [blueandr]            Blue and Red Fight the Robots v1.7
+- [cabaln02]            Cabal (NeoGeo port) improvements
+- [dino281]             Cadillacs and Dinosaurs (Readjusted v1.1)
+- [dino282]             Cadillacs and Dinosaurs (Readjusted v1.2)
+- [dino283]             Cadillacs and Dinosaurs (Readjusted v1.4)
+- [gladmortcm]          Gladmort (Caravan Mode)
+- [hyxevious]           Hyper Xevious (2026-07-30)
+- [midnight]            Midnight Wanderers 2-level demo (Neo-Geo port)
+- [nbamht01]            NBA Maximum Hangtime (Custom Rebuild, 2026-07-02)
+- [samsho2s21]          Samurai Shodown II (Perfect v2.4, 2025-01-27)
+- [samsho2s22]          Samurai Shodown II (Perfect v2.9, 2026-06-29)
+- [sengoku2s01]         Sengoku 2 (Red Blood, v1.14)
+- [sf2prime]            Street Fighter II': Prime (v0.79)
+- [sfiii3ns15]          Street Fighter III 3rd Strike: Fight for the Future (4rd Strike 2011-07-17)
+- [turfmast03]          Neo Turf Masters with Scotland course v1.10
+- [xeviousn05]          Xevious (Neo-Geo port, gfx fix)
+- [zintrick07]          ZinTricK (Music tracks) improvements
+
+
+
+
+2026-06-19 0.288.2
+
+
+
+New Games
+---------------------------------
+- [blueandr]            Blue and Red Fight the Robots v1.6
+- [csw2]                Crossed Swords 2 (full CD music)
+- [fr2s03]              Idol Mahjong Final Romance 2 (with music)
+- [hyxevious]           Hyper Xevious
+- [irrmaze01]           Irritating Maze (standard joystick)
+- [kof2001s52]          Kof2001 (All Boss Plus, 2026-04-09)
+- [kof97s646]           Kof'97 (Anniversary Edition, v2.3.0625)
+- [msmatsuri]           Mushihime-Sama Matsuri (Japan, 2011-05-23 CAVEMATSURI VER1.5)
+- [sf2prime]            Street Fighter II': Prime (v0.76)
+- [sfz3mix]             Street Fighter Zero 3 (Turbo Mix 0.32)
+
+
+
+
+2026-04-14 0.245.32
+
+
+
+New Games
+---------------------------------
+- [adcanoe]             Adventure Canoe
+- [blazstar02]          Blazing Star (remove "bonus" voice)
+- [gngknight]           Ghosts'n Goblins (Knight, set 1)
+- [gngknighta]          Ghosts'n Goblins (Knight, set 2)
+- [gngknightb]          Ghosts'n Goblins (Knight, set 3)
+- [gngknightc]          Ghosts'n Goblins (Knight, set 4)
+- [gngknightt]          Ghosts'n Goblins (Knight, US)
+- [gngmaiden]           Ghosts'n Goblins (Maiden, set 1)
+- [gngmaidena]          Ghosts'n Goblins (Maiden, set 2)
+- [gngmaidenb]          Ghosts'n Goblins (Maiden, set 3)
+- [gngmaidenc]          Ghosts'n Goblins (Maiden, set 4)
+- [gngmaident]          Ghosts'n Goblins (Maiden, US)
+- [grime]               Grime 68000
+- [halozero]            Halo Zero demo
+- [invdelux]            Space Invaders Part II (alt)
+- [makknight]           Makaimura (Knight)
+- [makknightb]          Makaimura (Knight, Rev B)
+- [makknightc]          Makaimura (Knight, Rev C)
+- [makknightg]          Makaimura (Knight, Rev G)
+- [makmaiden]           Makaimura (Maiden)
+- [makmaidenb]          Makaimura (Maiden, Rev B)
+- [makmaidenc]          Makaimura (Maiden, Rev C)
+- [makmaideng]          Makaimura (Maiden, Rev G)
+- [mk09]                Mortal Kombat (rev 5.5, 2026-03-16)(Wolf h/w, beta)
+- [sf2prime]            Street Fighter II': Prime (v0.75)
+- [soldam01]            Soldam (Sonic dropping/Free play)
+- [turfmast02]          Neo Turf Masters with Scotland course
+- [zintrick06]          ZinTricK (Music tracks)
+
+
+
+
+2026-03-01 0.245.31
 
 
 
@@ -18,19 +245,40 @@ New Games
 - [hypernoid01]         Hypernoid (2022-02-24)
 - [jumpnrund01]         Jump n Run Tech Demo (Dez 2020)
 - [kabukikl14]          Far East of Eden (Enhanced, 2023-03-22)
+- [kof2000s68]          Kof2000 (OTC, 2022-07-20)
+- [kof2000s69]          Kof2000 (Special, 2023-03-06)
+- [kof2000s70]          Kof2000 SP (Imitation BC 14 System Version, 2021-02-24)
+- [kof2001s51]          Kof2001 (PS2 Krizalid Edition, 2021-01-30)
+- [kof2002s322]         Kof2002 (Plus 2017, 2020-10-22)
+- [kof2002s323]         Kof2002 (The Rise of The World War Edition, 2022-09-23)
+- [kof2002s324]         Kof2002 (Infinite Energy, 2022-05-02)
+- [kof2002s325]         Kof2002 (Battle with Orochi, 2021-03-30)
+- [kof2002s326]         Kof2002 (Mugen, 2023-01-20)
 - [kof2003s77]          Kof2003 (PlayStation 2 Style Portraits, 2022-04-13)
 - [kf2k5u19]            Kof 10th Anniversary 2005 Unique (Optimised, 2025-03-28)
 - [kof94s43]            Kof'94 (Team Edit Edition v1.2.4 Style Portraits, 2024-06-03)
 - [kof95s49]            Kof'95 (Optimised, 2024-05-13)
 - [kof96s99]            Kof'96 (The Aniversary Edition 2.3 Final Version (gfx), 2020-05-27)
-- [kof97s637]           Kof '97 (Balanced & Optimised, 2023-12-25)
-- [kof97s638]           Kof '97 (Champion Edition, 2024-02-08)
-- [kof97s639]           Kof '97 (Evolution & Balance, 2023-12-17)
-- [kof97s640]           Kof '97 (Evolution New Edition, 2022-09-16)
-- [kof97s641]           Kof '97 (Invincible Plus!, B2.1.2107, 2021-07-09)
-- [kof97s643]           Kof '97 (Randomised, 2022-07-18)
-- [kof97s644]           Kof '97 (Strengthen Innovation, 2023-12-18)
-- [kof97s645]           Kof '97 (Ultimate Battle Plus, 2020-03-27)
+- [kof97s637]           Kof'97 (Balanced & Optimised, 2023-12-25)
+- [kof97s638]           Kof'97 (Champion Edition, 2024-02-08)
+- [kof97s639]           Kof'97 (Evolution & Balance, 2023-12-17)
+- [kof97s640]           Kof'97 (Evolution New Edition, 2022-09-16)
+- [kof97s641]           Kof'97 (Invincible Plus!, B2.1.2107, 2021-07-09)
+- [kof97s643]           Kof'97 (Randomised, 2022-07-18)
+- [kof97s644]           Kof'97 (Strengthen Innovation, 2023-12-18)
+- [kof97s645]           Kof'97 (Ultimate Battle Plus, 2020-03-27)
+- [kof98s53]            Kof'98 (BC 2002 Style Edition, 2022-09-22)
+- [kof98s54]            Kof'98 (Boss Chinese Edition, 2023-05-01)
+- [kof98s56]            Kof'98 (Easy Combo Edition, 2024-12-01)
+- [kof98s57]            Kof'98 (Plus Final Edition, 2019-09-10)
+- [kof98s58]            Kof'98 (Plus Chinese Edition, 2023-06-18)
+- [kof98s59]            Kof'98 (Ratio)
+- [kof99s185]           Kof'99 (Anniversary Edition Original, 2020-04-07)
+- [kof99s186]           Kof'99 (Evolution Edition Original Edition, 2023-02-13)
+- [kof99s187]           Kof'99 (Infinite Energy, 2024-01-01)
+- [kof99s188]           Kof'99 Plus
+- [kof99s189]           Kof'99 (Remix Pro v2.01 Final 2022)
+- [kof99s190]           Kof'99 (LC+SK, 2025-03-09)
 - [lastblad37]          Last Blade (Infinite Energy, 2023-04-17)
 - [lastblad38]          Last Blade (Special v2.5 Final)
 - [lastbld2s35]         Last Blade 2 (Infinite Energy, 2023-02-02)
@@ -720,9 +968,9 @@ New Games
 - [dinore1]             Cadillacs and Dinosaurs (Readjusted v1.1)
 - [dkrndmzr]            Donkey Kong RNDMZR v1.00 (2022-05-22)
 - [dkwizard]            Donkey Kong Wizardry v1.03
-- [kf2k19unis04]        Kof 10th Anniversary 2019 Unique (Optimized 2020-??-??)
-- [kf2k20unis01]        Kof 10th Anniversary 2020 Unique (Optimized 2020-10-25)
-- [kf2k20unis02]        Kof 10th Anniversary 2020 Unique (Optimized 2020-11-06)
+- [kf2k19unis04]        Kof 10th Anniversary 2019 Unique (Optimised 2020-??-??)
+- [kf2k20unis01]        Kof 10th Anniversary 2020 Unique (Optimised 2020-10-25)
+- [kf2k20unis02]        Kof 10th Anniversary 2020 Unique (Optimised 2020-11-06)
 - [mslug2fm]            Metal Slug 2 (Friendly Fire - Fightcade 2 Ver.2 Hack)
 - [mslug3rb]            Metal Slug 3 (Last Warhead)
 - [mslug4a]             Metal Slug 4 20th Anniversary (GOTVG Ver.2021 Hack)
@@ -1587,7 +1835,7 @@ New Games
 - [kof97s185]           Kof'97 (SP Special Edition 2015 2020-06-18)
 - [kof97s186]           Kof'97 (Windbreaker Eight Gods Second Shock 2020-06-02)
 - [kof97s187]           Kof'97 (10th Anniversary 2020-06-27)
-- [kof97s188]           Kof'97 (Optimized Modified Version 2020 2020-06-26)
+- [kof97s188]           Kof'97 (Optimised Modified Version 2020 2020-06-26)
 - [kof97s189]           Kof'97 (10th Anniversary 1.0 2009 Original 2020-06-30)
 - [kof97s190]           Kof'97 (10th Anniversary 1.0 2009 Simplify 2020-06-30)
 - [kof97s191]           Kof'97 (Angry Athena Original 2020-06-28)
@@ -1727,7 +1975,7 @@ New Games
 - [kof97s177]           Kof'97 (BC Enhanced Version Simplified Move 2020-05-25)
 - [kof97s178]           Kof'97 (Start Of Dream Simplify Edition 2020-05-25)
 - [kof97s179]           Kof'97 (Start Of Dream Edition 2020-05-25)
-- [kof97s180]           Kof'97 (Optimized Version, Practice Version 2020-05-27)
+- [kof97s180]           Kof'97 (Optimised Version, Practice Version 2020-05-27)
 - [kof97s181]           Kof'97 (World Armed Forces 83 Modified Version 2020-05-22)
 - [kof97s182]           Kof'97 (World Armed Forces 85 Modified Version 2020-05-22)
 - [kof98hh130]          Kof'98 (Combo 2020-03-28)
@@ -1766,7 +2014,7 @@ New Games
 - [mslugxz83]           Metal Slug X (Enemy Soldiers Psycho Edition 2020-06-11)
 - [mslugxz84]           Metal Slug X (Big Heavy Machine Gun Flame Edition 2018-12-08)(The Hungry Meteorite Edition 2020-06-11)
 - [mslugxz85]           Metal Slug X (Big Heavy Machine Gun Flame Edition 2018-12-08)(Enemy Soldiers Psycho Edition 2020-06-11)
-- [powerns05]           Power Instinct (Optimized Edition 2020-05-15)
+- [powerns05]           Power Instinct (Optimised Edition 2020-05-15)
 - [sailormnts04]        Pretty Soldier Sailor Moon (Enemy Demon Revised Edition 2020-05-13)
 - [sailormnts05]        Pretty Soldier Sailor Moon (Enemy Demon Revised Edition 2020-05-24)
 - [samsho5fe]           Samurai Shodown V Special (Final Edition, location test)
@@ -1913,7 +2161,7 @@ New Games
 - [dkongchm]          Donkey Kong League Championship v1.00
 - [dkongchm1]         Donkey Kong Championship Edition v1.01
 - [dkongl5]           Donkey Kong Level 5
-- [dkongran1]         Donkey Kong Randomized Edition v1.01
+- [dkongran1]         Donkey Kong Randomised Edition v1.01
 - [dstlks01]          Darkstalkers: The Night Warriors (Simplify Edition 2016-12-06)
 - [kf2k5unis15]       Kof 10th Anniversary 2005 Unique (Alpha Unique 2020-01-23)
 - [kf2k5unis16]       Kof 10th Anniversary 2005 Unique (Alpha Unique New 2020-01-24)
@@ -2515,7 +2763,7 @@ New Games
 - [dinos199]          Cadillacs and Dinosaurs (1V3 Enhanced Version 2019 2019-08-02)
 - [dinos200]          Cadillacs and Dinosaurs (Devil dance Series A 2019-07-30)
 - [dinos201]          Cadillacs and Dinosaurs (Devil dance Series B 2019-07-30)
-- [kf2k5unis14]       Kof 10th Anniversary 2005 Unique (Optimized Version 2019 2019-06-05)
+- [kf2k5unis14]       Kof 10th Anniversary 2005 Unique (Optimised Version 2019 2019-06-05)
 - [kof2k2s83]         Kof2002 (All Mix Version 2018-04-22)
 - [kof97s146]         Kof'97 (Heavenly Divine 2019-03-25)
 - [kof98hh120]        Kof'98 (Combo 2019-07-09)(Original)
@@ -2596,7 +2844,7 @@ New Games
 - [dkfreerun]         Donkey Kong Freerun Edition [by PaulGoes]
 - [dinos192]          Cadillacs and Dinosaurs (God of War Update 2019-05-30)
 - [dinos193]          Cadillacs and Dinosaurs (Group Demon Dance Version 2019-05-30)
-- [kf2k5unis13]       Kof 10th Anniversary 2005 Unique (Edition Optimized)
+- [kf2k5unis13]       Kof 10th Anniversary 2005 Unique (Edition Optimised)
 - [kovsho107]         Knights of Valour Super Heroes Plus (Survival New Version 2019-05-30)
 - [punishers07]       The Punisher (Unknown Hack 2019-05-30)
 - [punisherjs15]      The Punisher (1 Vs 2 Perfect Update 2019-05-30)
@@ -3030,8 +3278,8 @@ New Games
 - [dragoonas03]       Dragoon Might (Enable Hidden Character)
 - [dragoonas04]       Dragoon Might (Description Unknown)
 - [kof97s85]          Kof'97 (Zore Clone Zero Modified Version)(Even Strokes + Fat Lotus Huanhua + Big Snake Blue, Purple Sunshine Two, First Free, Went To The Fan Slap Small Bug To Be Repaired)
-- [kof97s86]          Kof'97 (Wulin Mythology Dark Snake Test Version 68)(83 Weakened Robert, Nagasaki Yuri, Optimized Eight Gods Crazy Eight + Big Snake Six Hair Color Sun + Protective Light Dizziness)
-- [kof97s87]          Kof'97 (Wulin Mythology Dark Snake Test Version 69)(85 Weakened Robert, Nagasaki Yuri, Optimized Eight Gods, Goritz + Big Snake Six Hair Whitening Sunlight + Protective Light Dizziness)
+- [kof97s86]          Kof'97 (Wulin Mythology Dark Snake Test Version 68)(83 Weakened Robert, Nagasaki Yuri, Optimised Eight Gods Crazy Eight + Big Snake Six Hair Color Sun + Protective Light Dizziness)
+- [kof97s87]          Kof'97 (Wulin Mythology Dark Snake Test Version 69)(85 Weakened Robert, Nagasaki Yuri, Optimised Eight Gods, Goritz + Big Snake Six Hair Whitening Sunlight + Protective Light Dizziness)
 - [kof97s88]          Kof'97 (Wulin Mythology Dark Snake Test Version 70)(83 Restore Map + Big Snake Six Hair White Sunshine + Protective Light First Dizziness, Cancel The Dark)
 - [kof97s89]          Kof'97 (Wulin Mythology Dark Snake Test Version 71)(85 Restore Map + Big Snake Six Hair White Sunshine + Protective Light First Dizziness, Cancel The Dark)
 - [kof97s90]          Kof'97 (Wulin Mythology Dark Snake Test Version 72)(83 Big Snakes Heart Teleport, Six Hair Whitening Sunlight + Protective Light Initial Dizziness)
@@ -3102,10 +3350,10 @@ New Games
 - [gnw_bride]         Game & Watch: Bride [by Montrose]
 - [gnw_squeeze]       Game & Watch: Squeeze [by Montrose]
 - [kof97s80]          Kof'97 (Clone Zero Modified Version)(Fixed Eight Gods Garbled, Fat Lotus Huan + Even Strokes + Big Snake Green Sunshine Two First Free, Went To The Fan Slap Small Bug To Be Repaired)
-- [kof97s81]          Kof'97 (The Martial Arts Myth Test Version 64)(83 Optimized Eight Gods Crazy Eight Feet Out Of The Move + Big Snake Double Sunshine Two Hair A Key Hair Attack Break Defense Dizziness)
-- [kof97s82]          Kof'97 (Wulin Mythology Test Version 65)(83 Optimized Eight Gods Crazy Eight Feet Out Of The Move + Big Snake Six Hair Sunshine + Protective Light A Key Hair Initial Dizziness)
-- [kof97s83]          Kof'97 (The Martial Arts Mythical Test Version 66)(85 Optimized Eight Gods Feet Move + Big Snake Double Sunshine Two Hair A Key Hair Attack Break Defense First Dizziness)
-- [kof97s84]          Kof'97 (Wulin Mythology Test Version 67)(85 Optimized Eight Gods Feet Move + Big Snake Six Hair Sunshine + Protective Light A Key Hair Initial Dizziness)
+- [kof97s81]          Kof'97 (The Martial Arts Myth Test Version 64)(83 Optimised Eight Gods Crazy Eight Feet Out Of The Move + Big Snake Double Sunshine Two Hair A Key Hair Attack Break Defense Dizziness)
+- [kof97s82]          Kof'97 (Wulin Mythology Test Version 65)(83 Optimised Eight Gods Crazy Eight Feet Out Of The Move + Big Snake Six Hair Sunshine + Protective Light A Key Hair Initial Dizziness)
+- [kof97s83]          Kof'97 (The Martial Arts Mythical Test Version 66)(85 Optimised Eight Gods Feet Move + Big Snake Double Sunshine Two Hair A Key Hair Attack Break Defense First Dizziness)
+- [kof97s84]          Kof'97 (Wulin Mythology Test Version 67)(85 Optimised Eight Gods Feet Move + Big Snake Six Hair Sunshine + Protective Light A Key Hair Initial Dizziness)
 - [kof98hh110]        Kof'98 (Combo 2018-05-05)
 - [kof98hh111]        Kof'98 (Easy Combo King Edition)
 - [lernit]            Team Lernit [by Vasily Familiya]
@@ -3340,7 +3588,7 @@ New Games
 - [kof97s39]          Kof'97 (Heavenly Protoss)(Ver.?)
 - [kof97s40]          Kof'97 (Dragon Super Plus)(Ver.?)
 - [kof97s41]          Kof'97 (Wulin Myth Test Version 34)(85 Gonitz Foot Super Kill After The Avatar Teleportation, The Big Snake Colorful Sunlight Teleport)
-- [kof97s42]          Kof'97 (Wulin Mythology Test Version 35)(85 Optimized Gonitz Foot Super Kill To Avoid Card Death, Big Snake Colorful Sunshine Heart Shine)
+- [kof97s42]          Kof'97 (Wulin Mythology Test Version 35)(85 Optimised Gonitz Foot Super Kill To Avoid Card Death, Big Snake Colorful Sunshine Heart Shine)
 - [kof97s43]          Kof'97 (Wulin Mythology Dark Snake Test Version 27)(83 All Banned From Heaven, Repairing Kagura And Buns Brother Bugs In Place, Strengthening An Lina, Big Snake Colorful Sunshine Six Hair + Protective Light))
 - [kof97s44]          Kof'97 (Wulin Mythology Dark Snake Test Version 28)(85 All Banned From The Sky, Yamazaki Ryuji Exhibition Tenth Anniversary Super Killing On The Ground Stepping On The Drooling Whip, Repairing Kagura And Buns Brother Bugs)
 - [kof97s45]          Kof'97 (The Martial Arts Mythical Dark Snake Test Version 30)(85 Amendment To The Seven-Yuan Society’s Move-Style Big Move To Kill, The Big Snake Shines)

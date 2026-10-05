@@ -14,7 +14,7 @@
     IMPLEMENTATION
 ***************************************************************************/
 
-WRITE_LINE_MEMBER(spc1000_vdp_exp_device::vdp_interrupt)
+void spc1000_vdp_exp_device::vdp_interrupt(int state)
 {
 	// nothing here?
 }
@@ -29,7 +29,7 @@ void spc1000_vdp_exp_device::device_add_mconfig(machine_config &config)
 	m_vdp->set_vram_size(0x4000);
 	m_vdp->int_callback().set(FUNC(spc1000_vdp_exp_device::vdp_interrupt));
 	m_vdp->set_screen("tms_screen");
-	SCREEN(config, "tms_screen", SCREEN_TYPE_RASTER);
+	SCREEN(config, "tms_screen");
 }
 
 

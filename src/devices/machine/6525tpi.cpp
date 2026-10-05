@@ -106,36 +106,30 @@
 
 DEFINE_DEVICE_TYPE(TPI6525, tpi6525_device, "tpi6525", "6525 TPI")
 
-tpi6525_device::tpi6525_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: device_t(mconfig, TPI6525, tag, owner, clock),
+tpi6525_device::tpi6525_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
+	device_t(mconfig, TPI6525, tag, owner, clock),
 	m_out_irq_cb(*this),
-	m_in_pa_cb(*this),
+	m_in_pa_cb(*this, 0xff),
 	m_out_pa_cb(*this),
-	m_in_pb_cb(*this),
+	m_in_pb_cb(*this, 0xff),
 	m_out_pb_cb(*this),
-	m_in_pc_cb(*this),
+	m_in_pc_cb(*this, 0xff),
 	m_out_pc_cb(*this),
 	m_out_ca_cb(*this),
 	m_out_cb_cb(*this),
 	m_port_a(0),
 	m_ddr_a(0),
-	m_in_a(0),
+	m_in_a(0xff),
 	m_port_b(0),
 	m_ddr_b(0),
-	m_in_b(0),
+	m_in_b(0xff),
 	m_port_c(0),
 	m_ddr_c(0),
-	m_in_c(0),
-	m_ca_level(0),
-	m_cb_level(0),
-	m_interrupt_level(0),
+	m_in_c(0xff),
 	m_cr(0),
-	m_air(0)
+	m_air(0),
+	m_irq_latch(0)
 {
-	for (auto & elem : m_irq_level)
-	{
-		elem = 0;
-	}
 }
 
 //-------------------------------------------------
@@ -144,18 +138,7 @@ tpi6525_device::tpi6525_device(const machine_config &mconfig, const char *tag, d
 
 void tpi6525_device::device_start()
 {
-	// resolve callbacks
-	m_out_irq_cb.resolve_safe();
-	m_in_pa_cb.resolve();
-	m_out_pa_cb.resolve_safe();
-	m_in_pb_cb.resolve();
-	m_out_pb_cb.resolve_safe();
-	m_in_pc_cb.resolve();
-	m_out_pc_cb.resolve_safe();
-	m_out_ca_cb.resolve_safe();
-	m_out_cb_cb.resolve_safe();
-
-	/* register for state saving */
+	// register for state saving
 	save_item(NAME(m_port_a));
 	save_item(NAME(m_ddr_a));
 	save_item(NAME(m_in_a));
@@ -165,12 +148,9 @@ void tpi6525_device::device_start()
 	save_item(NAME(m_port_c));
 	save_item(NAME(m_ddr_c));
 	save_item(NAME(m_in_c));
-	save_item(NAME(m_ca_level));
-	save_item(NAME(m_cb_level));
-	save_item(NAME(m_interrupt_level));
 	save_item(NAME(m_cr));
 	save_item(NAME(m_air));
-	save_item(NAME(m_irq_level));
+	save_item(NAME(m_irq_latch));
 }
 
 //-------------------------------------------------
@@ -179,10 +159,6 @@ void tpi6525_device::device_start()
 
 void tpi6525_device::device_reset()
 {
-	/* setup some initial values */
-	m_in_a = 0xff;
-	m_in_b = 0xff;
-	m_in_c = 0xff;
 }
 
 
@@ -192,113 +168,79 @@ void tpi6525_device::device_reset()
 
 void tpi6525_device::set_interrupt()
 {
-	if (!m_interrupt_level && (m_air != 0))
+	if ((BIT(m_irq_latch, 5) == 0) && (m_air != 0))
 	{
-		m_interrupt_level = 1;
+		m_irq_latch |= 1 << 5;
 
 		DBG_LOG(machine(), 3, "tpi6525", ("%s set interrupt\n", tag()));
 
-		m_out_irq_cb(m_interrupt_level);
+		m_out_irq_cb(1);
 	}
 }
 
 
 void tpi6525_device::clear_interrupt()
 {
-	if (m_interrupt_level && (m_air == 0))
+	if ((BIT(m_irq_latch, 5) == 1) && (m_air == 0))
 	{
-		m_interrupt_level = 0;
+		m_irq_latch &= ~(1 << 5);
 
 		DBG_LOG(machine(), 3, "tpi6525", ("%s clear interrupt\n", tag()));
 
-		m_out_irq_cb(m_interrupt_level);
+		m_out_irq_cb(0);
 	}
 }
 
 
-WRITE_LINE_MEMBER( tpi6525_device::i0_w )
+void tpi6525_device::portc_line_w(int line, int state)
 {
-	if (INTERRUPT_MODE && (state != m_irq_level[0]))
-	{
-		m_irq_level[0] = state;
+	bool active = false;
 
-		if ((state == 0) && !(m_air & 1) && (m_ddr_c & 1))
+	switch (line)
+	{
+		case 0:
+		case 1:
+		case 2:
+			active = (state == 0) && (BIT(m_in_c, line) == 1);
+			break;
+
+		case 3:
+			if (INTERRUPT3_RISING_EDGE)
+				active = (state == 1) && (BIT(m_in_c, line) == 0);
+			else
+				active = (state == 0) && (BIT(m_in_c, line) == 1);
+			break;
+
+		case 4:
+			if (INTERRUPT4_RISING_EDGE)
+				active = (state == 1) && (BIT(m_in_c, line) == 0);
+			else
+				active = (state == 0) && (BIT(m_in_c, line) == 1);
+			break;
+	}
+
+	m_in_c &= ~(1 << line);
+	m_in_c |= state << line;
+
+	if (INTERRUPT_MODE && active)
+	{
+		m_irq_latch |= 1 << line;
+
+		// set interrupt if not yet active and not masked
+		if (BIT(m_air, line) == 0 && BIT(m_ddr_c, line) == 1)
 		{
-			m_air |= 1;
+			m_air |= 1 << line;
 			set_interrupt();
 		}
 	}
 }
 
-
-WRITE_LINE_MEMBER( tpi6525_device::i1_w )
-{
-	if (INTERRUPT_MODE && (state != m_irq_level[1]))
-	{
-		m_irq_level[1] = state;
-
-		if ((state == 0) && !(m_air & 2) && (m_ddr_c & 2))
-		{
-			m_air |= 2;
-			set_interrupt();
-		}
-	}
-}
-
-
-WRITE_LINE_MEMBER( tpi6525_device::i2_w )
-{
-	if (INTERRUPT_MODE && (state != m_irq_level[2]))
-	{
-		m_irq_level[2] = state;
-
-		if ((state == 0) && !(m_air & 4) && (m_ddr_c & 4))
-		{
-			m_air |= 4;
-			set_interrupt();
-		}
-	}
-}
-
-
-WRITE_LINE_MEMBER( tpi6525_device::i3_w )
-{
-	if (INTERRUPT_MODE && (state != m_irq_level[3]))
-	{
-		m_irq_level[3] = state;
-
-		if (((INTERRUPT3_RISING_EDGE && (state == 1))
-			|| (!INTERRUPT3_RISING_EDGE && (state == 0)))
-			&& !(m_air & 8) && (m_ddr_c & 8))
-		{
-			m_air |= 8;
-			set_interrupt();
-		}
-	}
-}
-
-
-WRITE_LINE_MEMBER( tpi6525_device::i4_w )
-{
-	if (INTERRUPT_MODE && (state != m_irq_level[4]) )
-	{
-		m_irq_level[4] = state;
-
-		if (((INTERRUPT4_RISING_EDGE && (state == 1))
-			||(!INTERRUPT4_RISING_EDGE&&(state == 0)))
-			&& !(m_air & 0x10) && (m_ddr_c & 0x10))
-		{
-			m_air |= 0x10;
-			set_interrupt();
-		}
-	}
-}
 
 uint8_t tpi6525_device::pa_r()
 {
 	uint8_t data = m_in_a;
 
-	if (!m_in_pa_cb.isnull())
+	if (!m_in_pa_cb.isunset())
 		data = m_in_pa_cb();
 
 	data = (data & ~m_ddr_a) | (m_ddr_a & m_port_a);
@@ -317,7 +259,7 @@ uint8_t tpi6525_device::pb_r()
 {
 	uint8_t data = m_in_b;
 
-	if (!m_in_pb_cb.isnull())
+	if (!m_in_pb_cb.isunset())
 		data = m_in_pb_cb();
 
 	data = (data & ~m_ddr_b) | (m_ddr_b & m_port_b);
@@ -336,7 +278,7 @@ uint8_t tpi6525_device::pc_r()
 {
 	uint8_t data = m_in_c;
 
-	if (!m_in_pc_cb.isnull())
+	if (!m_in_pc_cb.isunset())
 		data &= m_in_pc_cb();
 
 	data = (data & ~m_ddr_c) | (m_ddr_c & m_port_c);
@@ -360,7 +302,7 @@ uint8_t tpi6525_device::read(offs_t offset)
 	case 0:
 		data = m_in_a;
 
-		if (!m_in_pa_cb.isnull())
+		if (!m_in_pa_cb.isunset())
 			data &= m_in_pa_cb(0);
 
 		data = (data & ~m_ddr_a) | (m_ddr_a & m_port_a);
@@ -370,7 +312,7 @@ uint8_t tpi6525_device::read(offs_t offset)
 	case 1:
 		data = m_in_b;
 
-		if (!m_in_pb_cb.isnull())
+		if (!m_in_pb_cb.isunset())
 			data &= m_in_pb_cb(0);
 
 		data = (data & ~m_ddr_b) | (m_ddr_b & m_port_b);
@@ -380,22 +322,13 @@ uint8_t tpi6525_device::read(offs_t offset)
 	case 2:
 		if (INTERRUPT_MODE)
 		{
-			data = 0;
-
-			if (m_irq_level[0]) data |= 0x01;
-			if (m_irq_level[1]) data |= 0x02;
-			if (m_irq_level[2]) data |= 0x04;
-			if (m_irq_level[3]) data |= 0x08;
-			if (m_irq_level[4]) data |= 0x10;
-			if (!m_interrupt_level) data |= 0x20;
-			if (m_ca_level) data |= 0x40;
-			if (m_cb_level) data |= 0x80;
+			data = m_irq_latch;
 		}
 		else
 		{
 			data = m_in_c;
 
-			if (!m_in_pc_cb.isnull())
+			if (!m_in_pc_cb.isunset())
 				data &= m_in_pc_cb(0);
 
 			data = (data & ~m_ddr_c) | (m_ddr_c & m_port_c);
@@ -423,36 +356,22 @@ uint8_t tpi6525_device::read(offs_t offset)
 	case 7: /* air */
 		if (PRIORIZED_INTERRUPTS)
 		{
-			if (m_air & 0x10)
+			for (int i = 4; i >= 0; i--)
 			{
-				data = 0x10;
-				m_air &= ~0x10;
-			}
-			else if (m_air & 8)
-			{
-				data = 8;
-				m_air &= ~8;
-			}
-			else if (m_air & 4)
-			{
-				data = 4;
-				m_air &= ~4;
-			}
-			else if (m_air & 2)
-			{
-				data = 2;
-				m_air &= ~2;
-			}
-			else if (m_air & 1)
-			{
-				data = 1;
-				m_air &= ~1;
+				if (BIT(m_air, i))
+				{
+					data = 1 << i;
+					m_air &= ~(1 << i);
+					m_irq_latch &= ~(1 << i);
+					break;
+				}
 			}
 		}
 		else
 		{
 			data = m_air;
 			m_air = 0;
+			m_irq_latch &= 0xe0;
 		}
 
 		clear_interrupt();
@@ -486,7 +405,16 @@ void tpi6525_device::write(offs_t offset, uint8_t data)
 		m_port_c = data;
 
 		if (!INTERRUPT_MODE)
+		{
 			m_out_pc_cb((offs_t)0, (m_port_c & m_ddr_c) | (m_ddr_c ^ 0xff));
+		}
+		else
+		{
+			for (int i = 0; i <= 4; i++)
+				if (BIT(data, i) == 0)
+					m_irq_latch &= ~(1 << i);
+
+		}
 		break;
 
 	case 3:
@@ -513,18 +441,20 @@ void tpi6525_device::write(offs_t offset, uint8_t data)
 		{
 			if (CA_MANUAL_OUT)
 			{
-				if (m_ca_level != CA_MANUAL_LEVEL)
+				if (BIT(m_irq_latch, 6) != CA_MANUAL_LEVEL)
 				{
-					m_ca_level = CA_MANUAL_LEVEL;
-					m_out_ca_cb(m_ca_level);
+					m_irq_latch &= ~(1 << 6);
+					m_irq_latch |= CA_MANUAL_LEVEL << 6;
+					m_out_ca_cb(BIT(m_irq_latch, 6));
 				}
 			}
 			if (CB_MANUAL_OUT)
 			{
-				if (m_cb_level != CB_MANUAL_LEVEL)
+				if (BIT(m_irq_latch, 7) != CB_MANUAL_LEVEL)
 				{
-					m_cb_level = CB_MANUAL_LEVEL;
-					m_out_cb_cb(m_cb_level);
+					m_irq_latch &= ~(1 << 7);
+					m_irq_latch |= CB_MANUAL_LEVEL << 7;
+					m_out_cb_cb(BIT(m_irq_latch, 7));
 				}
 			}
 		}
@@ -541,21 +471,4 @@ void tpi6525_device::port_line_w(uint8_t &port, int line, int state)
 {
 	port &= ~(1 << line);
 	port |= state << line;
-}
-
-/* this should probably be done better, needed for amigacd.c */
-
-uint8_t tpi6525_device::get_ddr_a()
-{
-	return m_ddr_a;
-}
-
-uint8_t tpi6525_device::get_ddr_b()
-{
-	return m_ddr_b;
-}
-
-uint8_t tpi6525_device::get_ddr_c()
-{
-	return m_ddr_c;
 }

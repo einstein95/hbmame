@@ -6,8 +6,8 @@
 
 ***************************************************************************/
 
-#ifndef DEVICES_BUS_SCSI_SCSICD512_H
-#define DEVICES_BUS_SCSI_SCSICD512_H
+#ifndef MAME_BUS_SCSI_SCSICD512_H
+#define MAME_BUS_SCSI_SCSICD512_H
 
 #pragma once
 
@@ -26,13 +26,16 @@ protected:
 		const char *mfr, const char *product, const char *rev, uint8_t data)
 		: scsicd512_device(mconfig, type, tag, owner, 0)
 	{
-		strncpy(m_manufacturer, mfr, 8);
-		strncpy(m_product, product, 16);
-		strncpy(m_revision, rev, 4);
+		//strncpy(m_manufacturer, mfr, 8);
+		//strncpy(m_product, product, 16);
+		//strncpy(m_revision, rev, 4);
+		snprintf(m_manufacturer, std::size(m_manufacturer), "%s", mfr);
+		snprintf(m_product, std::size(m_product), "%s", product);
+		snprintf(m_revision, std::size(m_revision), "%s", rev);
 		m_data = data;
 	}
 
-	virtual void device_reset() override;
+	virtual void device_reset() override ATTR_COLD;
 
 	char m_manufacturer[8];
 	char m_product[16];
@@ -46,10 +49,10 @@ public:
 	dec_rrd45_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 };
 
-class toshiba_xm3301_device : public scsicd512_device
+class toshiba_xm3301ta_device : public scsicd512_device
 {
 public:
-	toshiba_xm3301_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	toshiba_xm3301ta_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 };
 
 class toshiba_xm5301_sun_device : public scsicd512_device
@@ -77,10 +80,10 @@ public:
 };
 
 DECLARE_DEVICE_TYPE(RRD45, dec_rrd45_device)
-DECLARE_DEVICE_TYPE(XM3301, toshiba_xm3301_device)
+DECLARE_DEVICE_TYPE(XM3301TA, toshiba_xm3301ta_device)
 DECLARE_DEVICE_TYPE(XM5301SUN, toshiba_xm5301_sun_device)
 DECLARE_DEVICE_TYPE(XM5401SUN, toshiba_xm5401_sun_device)
 DECLARE_DEVICE_TYPE(XM5701, toshiba_xm5701_device)
 DECLARE_DEVICE_TYPE(XM5701SUN, toshiba_xm5701_sun_device)
 
-#endif // DEVICES_BUS_SCSI_SCSICD512_H
+#endif // MAME_BUS_SCSI_SCSICD512_H

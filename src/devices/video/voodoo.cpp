@@ -118,6 +118,10 @@ TODO:
 #include "emu.h"
 #include "voodoo.h"
 
+#include "input.h" // for video debug keys
+
+#include "endianness.h"
+
 using namespace voodoo;
 
 
@@ -685,10 +689,6 @@ generic_voodoo_device::generic_voodoo_device(const machine_config &mconfig, devi
 
 void generic_voodoo_device::device_start()
 {
-	// resolve callbacks
-	m_vblank_cb.resolve();
-	m_stall_cb.resolve();
-	m_pciint_cb.resolve();
 }
 
 
@@ -712,7 +712,7 @@ voodoo_1_device::voodoo_1_device(const machine_config &mconfig, device_type type
 	m_flush_flag(false),
 	m_fbram(nullptr),
 	m_fbmask(0),
-	m_rgboffs{ u32(~0), u32(~0), u32(~0) },
+	m_rgboffs{ ~u32(0), ~u32(0), ~u32(0) },
 	m_auxoffs(~0),
 	m_frontbuf(0),
 	m_backbuf(1),
@@ -2579,8 +2579,7 @@ void voodoo_1_device::vblank_start(s32 param)
 	m_vblank = true;
 
 	// notify external VBLANK handler on all models
-	if (!m_vblank_cb.isnull())
-		m_vblank_cb(true);
+	m_vblank_cb(true);
 }
 
 
@@ -2598,8 +2597,7 @@ void voodoo_1_device::vblank_stop(s32 param)
 	m_vblank = false;
 
 	// notify external VBLANK handler on all models
-	if (!m_vblank_cb.isnull())
-		m_vblank_cb(false);
+	m_vblank_cb(false);
 
 	// go to the end of the next frame
 	adjust_vblank_start_timer();
@@ -2758,15 +2756,15 @@ void voodoo_1_device::recompute_video_timing(u32 hsyncon, u32 hsyncoff, u32 hvis
 	visarea.max_y = std::min<s32>(visarea.max_y, vtotal - 1);
 
 	// compute the new period for standard res, medium res, and VGA res
-	attoseconds_t stdperiod = HZ_TO_ATTOSECONDS(15750) * vtotal;
-	attoseconds_t medperiod = HZ_TO_ATTOSECONDS(25000) * vtotal;
-	attoseconds_t vgaperiod = HZ_TO_ATTOSECONDS(31500) * vtotal;
+	attotime stdperiod = attotime::from_ticks(vtotal, 15750);
+	attotime medperiod = attotime::from_ticks(vtotal, 25000);
+	attotime vgaperiod = attotime::from_ticks(vtotal, 31500);
 
 	// compute a diff against the current refresh period
-	attoseconds_t refresh = screen().frame_period().attoseconds();
-	attoseconds_t stddiff = std::abs(stdperiod - refresh);
-	attoseconds_t meddiff = std::abs(medperiod - refresh);
-	attoseconds_t vgadiff = std::abs(vgaperiod - refresh);
+	attotime refresh = screen().frame_period();
+	attoseconds_t stddiff = std::abs((stdperiod - refresh).as_attoseconds());
+	attoseconds_t meddiff = std::abs((medperiod - refresh).as_attoseconds());
+	attoseconds_t vgadiff = std::abs((vgaperiod - refresh).as_attoseconds());
 
 	logerror("hSync=%d-%d, bp=%d, vis=%d  vSync=%d-%d, bp=%d, vis=%d\n", hsyncon, hsyncoff, hbp, hvis, vsyncon, vsyncoff, vbp, vvis);
 	logerror("Horiz: %d-%d (%d total)  Vert: %d-%d (%d total) -- ", visarea.min_x, visarea.max_x, htotal, visarea.min_y, visarea.max_y, vtotal);
@@ -2775,17 +2773,17 @@ void voodoo_1_device::recompute_video_timing(u32 hsyncon, u32 hsyncoff, u32 hvis
 	if (stddiff < meddiff && stddiff < vgadiff)
 	{
 		screen().configure(htotal, vtotal, visarea, stdperiod);
-		logerror("Standard resolution, %f Hz\n", ATTOSECONDS_TO_HZ(stdperiod));
+		logerror("Standard resolution, %f Hz\n", stdperiod.as_hz());
 	}
 	else if (meddiff < vgadiff)
 	{
 		screen().configure(htotal, vtotal, visarea, medperiod);
-		logerror("Medium resolution, %f Hz\n", ATTOSECONDS_TO_HZ(medperiod));
+		logerror("Medium resolution, %f Hz\n", medperiod.as_hz());
 	}
 	else
 	{
 		screen().configure(htotal, vtotal, visarea, vgaperiod);
-		logerror("VGA resolution, %f Hz\n", ATTOSECONDS_TO_HZ(vgaperiod));
+		logerror("VGA resolution, %f Hz\n", vgaperiod.as_hz());
 	}
 
 	// configure the new framebuffer info
@@ -2889,7 +2887,7 @@ void voodoo_1_device::recompute_video_memory_common(u32 config, u32 rowpixels)
 
 s32 voodoo_1_device::triangle()
 {
-	g_profiler.start(PROFILER_USER2);
+	auto profile = g_profiler.start(PROFILER_USER2);
 
 	// allocate polygon information now
 	auto &poly = m_renderer->alloc_poly();
@@ -3021,7 +3019,7 @@ s32 voodoo_1_device::triangle()
 	if (DEBUG_STATS)
 		m_stats.m_triangles++;
 
-	g_profiler.stop();
+	profile.stop();
 
 	if (LOG_REGISTERS)
 		logerror("cycles = %d\n", TRIANGLE_SETUP_CLOCKS + pixels);
@@ -3137,7 +3135,7 @@ void voodoo_1_device::check_stalled_cpu(attotime current_time)
 		m_stall_state = NOT_STALLED;
 
 		// either call the callback, or trigger the trigger
-		if (!m_stall_cb.isnull())
+		if (!m_stall_cb.isunset())
 			m_stall_cb(false);
 		else
 			machine().scheduler().trigger(m_stall_trigger);
@@ -3165,7 +3163,7 @@ void voodoo_1_device::stall_cpu(stall_state state)
 		m_stats.m_stalls++;
 
 	// either call the callback, or spin the CPU
-	if (!m_stall_cb.isnull())
+	if (!m_stall_cb.isunset())
 		m_stall_cb(true);
 	else
 		m_cpu->spin_until_trigger(m_stall_trigger);

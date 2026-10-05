@@ -2,7 +2,7 @@
 // copyright-holders:Nigel Barnes
 /**********************************************************************
 
-    Acorn Archimedes Expansion Bus emulation
+    Acorn Archimedes/Risc PC Expansion Bus emulation
 
 **********************************************************************/
 
@@ -14,7 +14,7 @@
 //  DEVICE DEFINITIONS
 //**************************************************************************
 
-DEFINE_DEVICE_TYPE(ARCHIMEDES_PODULE_SLOT, archimedes_podule_slot_device, "archimedes_exp_slot", "Acorn Archimedes Podule slot")
+DEFINE_DEVICE_TYPE(ARCHIMEDES_PODULE_SLOT, archimedes_podule_slot_device, "archimedes_exp_slot", "Acorn Expansion Card slot")
 
 
 //**************************************************************************
@@ -52,7 +52,7 @@ void archimedes_podule_slot_device::device_start()
 //  GLOBAL VARIABLES
 //**************************************************************************
 
-DEFINE_DEVICE_TYPE(ARCHIMEDES_EXPANSION_BUS, archimedes_exp_device, "archimedes_exp", "Acorn Archimedes Expansion Bus")
+DEFINE_DEVICE_TYPE(ARCHIMEDES_EXPANSION_BUS, archimedes_exp_device, "archimedes_exp", "Acorn Expansion Bus")
 
 
 //**************************************************************************
@@ -66,8 +66,9 @@ DEFINE_DEVICE_TYPE(ARCHIMEDES_EXPANSION_BUS, archimedes_exp_device, "archimedes_
 archimedes_exp_device::archimedes_exp_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
 	: device_t(mconfig, ARCHIMEDES_EXPANSION_BUS, tag, owner, clock)
 	, device_memory_interface(mconfig, *this)
-	, m_ioc_config("podule_ioc", ENDIANNESS_LITTLE, 32, 16, 0, address_map_constructor(FUNC(archimedes_exp_device::ioc_map), this))
-	, m_memc_config("podule_memc", ENDIANNESS_LITTLE, 32, 16, 0, address_map_constructor(FUNC(archimedes_exp_device::memc_map), this))
+	, m_ioc_config("podule_ioc", ENDIANNESS_LITTLE, 32, 17, 0, address_map_constructor(FUNC(archimedes_exp_device::ioc_map), this))
+	, m_memc_config("podule_memc", ENDIANNESS_LITTLE, 32, 17, 0, address_map_constructor(FUNC(archimedes_exp_device::memc_map), this))
+	, m_easi_config("podule_easi", ENDIANNESS_LITTLE, 32, 27, 0, address_map_constructor(FUNC(archimedes_exp_device::easi_map), this))
 	, m_out_pirq_cb(*this)
 	, m_out_pfiq_cb(*this)
 {
@@ -77,7 +78,8 @@ device_memory_interface::space_config_vector archimedes_exp_device::memory_space
 {
 	return space_config_vector{
 		std::make_pair(AS_PROGRAM, &m_memc_config),
-		std::make_pair(AS_IO, &m_ioc_config)
+		std::make_pair(AS_IO, &m_ioc_config),
+		std::make_pair(AS_DATA, &m_easi_config)
 	};
 }
 
@@ -91,22 +93,21 @@ void archimedes_exp_device::memc_map(address_map &map)
 	map.unmap_value_high();
 }
 
+void archimedes_exp_device::easi_map(address_map &map)
+{
+	map.unmap_value_high();
+}
+
 
 //-------------------------------------------------
 //  device_start - device-specific startup
 //-------------------------------------------------
 
-void archimedes_exp_device::device_resolve_objects()
-{
-	// resolve callbacks
-	m_out_pirq_cb.resolve_safe();
-	m_out_pfiq_cb.resolve_safe();
-}
-
 void archimedes_exp_device::device_start()
 {
 	m_ioc = &space(AS_IO);
 	m_memc = &space(AS_PROGRAM);
+	m_easi = &space(AS_DATA);
 }
 
 //-------------------------------------------------
@@ -135,7 +136,7 @@ void archimedes_exp_device::pirq_w(int state, int slot)
 
 
 //-------------------------------------------------
-//  ps - simple podule select
+//  ps - podule select
 //-------------------------------------------------
 
 u16 archimedes_exp_device::ps4_r(offs_t offset, u16 mem_mask)
@@ -177,18 +178,56 @@ void archimedes_exp_device::ps6_w(offs_t offset, u16 data, u16 mem_mask)
 	}
 }
 
+
+u16 archimedes_exp_device::ps7_r(offs_t offset, u16 mem_mask)
+{
+	return m_ioc->read_word(0x10000 + (offset << 2), mem_mask);
+}
+
+void archimedes_exp_device::ps7_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	m_ioc->write_word(0x10000 + (offset << 2), data, mem_mask);
+}
+
+
 //-------------------------------------------------
-//  ms - memc select
+//  ms - module select
 //-------------------------------------------------
 
-u16 archimedes_exp_device::ms_r(offs_t offset, u16 mem_mask)
+u16 archimedes_exp_device::ms0_r(offs_t offset, u16 mem_mask)
 {
 	return m_memc->read_word(offset << 2, mem_mask);
 }
 
-void archimedes_exp_device::ms_w(offs_t offset, u16 data, u16 mem_mask)
+void archimedes_exp_device::ms0_w(offs_t offset, u16 data, u16 mem_mask)
 {
 	m_memc->write_word(offset << 2, data, mem_mask);
+}
+
+
+u16 archimedes_exp_device::ms3_r(offs_t offset, u16 mem_mask)
+{
+	return m_memc->read_word(0x10000 + (offset << 2), mem_mask);
+}
+
+void archimedes_exp_device::ms3_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	m_memc->write_word(0x10000 + (offset << 2), data, mem_mask);
+}
+
+
+//-------------------------------------------------
+//  eas - EASI select
+//-------------------------------------------------
+
+u32 archimedes_exp_device::eas_r(offs_t offset, u32 mem_mask)
+{
+	return m_easi->read_dword(offset, mem_mask);
+}
+
+void archimedes_exp_device::eas_w(offs_t offset, u32 data, u32 mem_mask)
+{
+	m_easi->write_dword(offset, data, mem_mask);
 }
 
 
@@ -227,14 +266,15 @@ void device_archimedes_podule_interface::interface_pre_start()
 	size_t const tlen = strlen(m_exp_slottag);
 
 	m_slot = (m_exp_slottag[tlen - 1] - '0');
-	if (m_slot < 0 || m_slot > 3)
-		fatalerror("Podule %d out of range for Archimedes expansion bus\n", m_slot);
+	if (m_slot < 0 || m_slot > 7)
+		fatalerror("Podule %d out of range for Acorn expansion bus\n", m_slot);
 }
 
 void device_archimedes_podule_interface::interface_post_start()
 {
 	m_exp->install_ioc_map(m_slot, *this, &device_archimedes_podule_interface::ioc_map);
 	m_exp->install_memc_map(m_slot, *this, &device_archimedes_podule_interface::memc_map);
+	m_exp->install_easi_map(m_slot, *this, &device_archimedes_podule_interface::easi_map);
 }
 
 
@@ -244,14 +284,14 @@ void device_archimedes_podule_interface::interface_post_start()
 //#include "archdigi.h"
 //#include "archscan.h"
 #include "armadeus.h"
-//#include "discbuffer.h"
 //#include "colourcard.h"
+//#include "discbuffer.h"
 #include "eaglem2.h"
 #include "ether1.h"
-//#include "ether2.h"
-//#include "ether3.h"
+#include "ether2.h"
+#include "ether3.h"
 //#include "ether5.h"
-//#include "ethera.h"
+#include "ethera.h"
 #include "etherd.h"
 #include "etherr.h"
 #include "faxpack.h"
@@ -272,6 +312,7 @@ void device_archimedes_podule_interface::interface_post_start()
 #include "io.h"
 #include "io_hccs.h"
 #include "io_morley.h"
+//#include "io_oak.h"
 #include "io_we.h"
 #include "lark.h"
 #include "laserd.h"
@@ -284,11 +325,12 @@ void device_archimedes_podule_interface::interface_post_start()
 #include "rs423.h"
 #include "scan256.h"
 #include "scanlight.h"
-//#include "scsi_a500.h"
-//#include "scsi_acorn.h"
-//#include "scsi_ling.h"
-//#include "scsi_morley.h"
-//#include "scsi_oak.h"
+#include "scsi_a500.h"
+#include "scsi_acorn.h"
+#include "scsi_cumana.h"
+#include "scsi_ling.h"
+#include "scsi_morley.h"
+#include "scsi_oak.h"
 #include "scsi_vti.h"
 #include "serial.h"
 #include "spectra.h"
@@ -314,8 +356,8 @@ void archimedes_exp_devices(device_slot_interface &device)
 	//device.option_add("ccgold", ARC_CCGOLD);              // Wild Vision/Computer Concepts Colour Card Gold
 	device.option_add("eaglem2", ARC_EAGLEM2);            // Wild Vision/Computer Concepts Eagle M2
 	device.option_add("ether1", ARC_ETHER1_AKA25);        // Acorn AKA25 Ethernet
-	//device.option_add("ether2", ARC_ETHER2_AEH50);        // Acorn AEH50 Ethernet II
-	//device.option_add("ether3_aeh54", ARC_ETHER3_AEH54);  // Acorn AEH54 10Base2 Ethernet Podule
+	device.option_add("ether2", ARC_ETHER2_AEH50);        // Acorn AEH50 Ethernet II
+	device.option_add("ether3_aeh54", ARC_ETHER3_AEH54);  // Acorn AEH54 10Base2 Ethernet Podule
 	//device.option_add("ether5", ARC_ETHER5);              // Atomwide Ethernet V Podule
 	device.option_add("etherr", ARC_ETHERR);              // RISC Developments Ethernet Card
 	device.option_add("faxpack", ARC_FAXPACK);            // Computer Concepts Fax-Pack
@@ -344,6 +386,7 @@ void archimedes_exp_devices(device_slot_interface &device)
 	//device.option_add("prisma3", ARC_PRISMA3);            // Millipede PRISMA-3 Podule
 	//device.option_add("prisma3p", ARC_PRISMA3P);          // Millipede PRISMA-3 Plus Podule
 	device.option_add("rom_aka05", ARC_ROM_AKA05);        // Acorn AKA05 ROM Podule
+	device.option_add("rom_r225boot", ARC_ROM_R225);      // Acorn AKA05 ROM (with DiscLess Bootstrap support)
 	//device.option_add("rom_cc", ARC_ROM_CC);              // Computer Concepts ROM/RAM Podule
 	device.option_add("rs423", ARC_RS423);                // Intelligent Interfaces Dual RS423 Serial Interface
 	device.option_add("scan256", ARC_SCAN256);            // Watford Electronics 256 Grey-Scale Scanner
@@ -351,12 +394,14 @@ void archimedes_exp_devices(device_slot_interface &device)
 	device.option_add("scanjunior", ARC_SCANJUNIOR);      // Computer Concepts ScanLight Junior
 	device.option_add("scanjunior3", ARC_SCANJUNIOR3);    // Computer Concepts ScanLight Junior Mk3
 	device.option_add("scanvideo", ARC_SCANVIDEO);        // Computer Concepts ScanLight Video 256
-	//device.option_add("scsi_a500", ARC_SCSI_A500);        // Acorn A500 SCSI Interface
-	//device.option_add("scsi_aka31", ARC_SCSI_AKA31);      // Acorn AKA31 SCSI Expansion Card
-	//device.option_add("scsi_aka32", ARC_SCSI_AKA32);      // Acorn AKA32 CDFS & SCSI Expansion Card
-	//device.option_add("scsi_ling", ARC_SCSI_LING);        // Lingenuity SCSI Podule
-	//device.option_add("scsi_morley", ARC_SCSI_MORLEY);    // Morley Electronics 16bit Cached SCSI card
-	//device.option_add("scsi_oak", ARC_SCSI_OAK);          // Oak Solutions SCSI Interface
+	device.option_add("scsi_a500", ARC_SCSI_A500);        // Acorn A500 SCSI Interface
+	device.option_add("scsi_aka30", ARC_SCSI_AKA30);      // Acorn AKA30 SCSI Expansion Card
+	device.option_add("scsi_aka31", ARC_SCSI_AKA31);      // Acorn AKA31 SCSI Expansion Card
+	device.option_add("scsi_aka32", ARC_SCSI_AKA32);      // Acorn AKA32 CDFS & SCSI Expansion Card
+	device.option_add("scsi_cumana", ARC_SCSI_CUMANA);    // Cumana 16bit SCSI interface
+	device.option_add("scsi_ling", ARC_SCSI_LING);        // Lingenuity SCSI Podule
+	device.option_add("scsi_morley", ARC_SCSI_MORLEY);    // Morley Electronics 16bit Cached SCSI card
+	device.option_add("scsi_oak", ARC_SCSI_OAK);          // Oak Solutions SCSI Interface
 	device.option_add("scsi_vti", ARC_SCSI_VTI);          // VTI User Port and SCSI Podule
 	device.option_add("serial", ARC_SERIAL);              // Atomwide Serial Expansion Card
 	device.option_add("spectra", ARC_SPECTRA);            // Beebug Spectra Colour Scanner
@@ -371,10 +416,11 @@ void archimedes_exp_devices(device_slot_interface &device)
 
 void archimedes_mini_exp_devices(device_slot_interface &device)
 {
+	//device.option_add("a3user_oak", ARC_A3USER_OAK);      // Oak Solutions A3000 User/Analogue Port
 	device.option_add("bbcio_aga30", ARC_BBCIO_AGA30);    // Acorn AGA30 BBC I/O Podule
 	device.option_add("bbcio_we", ARC_BBCIO_WE);          // Watford BBC User I/O Card
 	//device.option_add("disc_a3k6", ARC_DISC_A3K6);        // PRES A3K6 Disc Buffer
-	//device.option_add("ethera", ARC_ETHERA);              // ANT Ethernet 10base2 mini-podule
+	device.option_add("ethera", ARC_ETHERA);              // ANT Ethernet 10base2 mini-podule
 	device.option_add("etherd", ARC_ETHERD);              // Digital Services Ethernet Podule
 	//device.option_add("ide_a3k_hccs", ARC_IDE_A3K_HCCS);  // HCCS IDE A3000 Interface
 	//device.option_add("ide_castle", ARC_IDE_CASTLE);      // Castle Technology A3000 IDE Expansion Card
@@ -386,4 +432,22 @@ void archimedes_mini_exp_devices(device_slot_interface &device)
 	device.option_add("uma_morley", ARC_UMA_MORLEY);      // Morley Electronics User/MIDI/Analogue Interface
 	device.option_add("upa_hccs", ARC_UPA_HCCS);          // HCCS User/Analogue Podule
 	device.option_add("upmidi_aka12", ARC_UPMIDI_AKA12);  // Acorn AKA12 User Port/MIDI Upgrade
+}
+
+//-------------------------------------------------
+//  riscpc_debi_exp_devices (Risc PC DEBI cards)
+//-------------------------------------------------
+
+void riscpc_debi_exp_devices(device_slot_interface &device)
+{
+	riscpc_easi_exp_devices(device);
+}
+
+//-------------------------------------------------
+//  riscpc_easi_exp_devices (Risc PC EASI cards)
+//-------------------------------------------------
+
+void riscpc_easi_exp_devices(device_slot_interface &device)
+{
+	archimedes_exp_devices(device);
 }

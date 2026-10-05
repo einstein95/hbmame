@@ -141,7 +141,7 @@ uint8_t side116_device::read(offs_t offset)
 	}
 	else if (offset < 8)
 	{
-		data = m_ata->cs0_r(offset & 7, 0xff);
+		data = m_ata->cs0_r(offset & 7);
 	}
 	else if (offset == 8)
 	{
@@ -149,7 +149,7 @@ uint8_t side116_device::read(offs_t offset)
 	}
 	else
 	{
-		data = m_ata->cs1_r(offset & 7, 0xff);
+		data = m_ata->cs1_r(offset & 7);
 	}
 
 	return data;
@@ -164,7 +164,7 @@ void side116_device::write(offs_t offset, uint8_t data)
 	}
 	else if (offset < 8)
 	{
-		m_ata->cs0_w(offset & 7, data, 0xff);
+		m_ata->cs0_w(offset & 7, data);
 	}
 	else if (offset == 8)
 	{
@@ -172,11 +172,11 @@ void side116_device::write(offs_t offset, uint8_t data)
 	}
 	else
 	{
-		m_ata->cs1_w(offset & 7, data, 0xff);
+		m_ata->cs1_w(offset & 7, data);
 	}
 }
 
-WRITE_LINE_MEMBER( side116_device::ide_interrupt )
+void side116_device::ide_interrupt(int state)
 {
 	uint8_t level = m_config->read() & 0x18;
 

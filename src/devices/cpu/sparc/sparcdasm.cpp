@@ -13,78 +13,82 @@
 
 
 namespace {
-	int32_t get_disp16(uint32_t op) { return DISP19; }
-	int32_t get_disp19(uint32_t op) { return DISP19; }
-	int32_t get_disp22(uint32_t op) { return DISP19; }
 
-	const char *bicc_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
+constexpr int32_t get_disp16(uint32_t op) { return DISP16; }
+constexpr int32_t get_disp19(uint32_t op) { return DISP19; }
+constexpr int32_t get_disp22(uint32_t op) { return DISP22; }
+
+const char *bicc_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
+{
+	if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
+	auto const cc((use_cc && (BRCC & 0x2)) ? conf->get_xcc() : conf->get_icc());
+	switch (COND)
 	{
-		if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
-		auto const cc((use_cc && (BRCC & 0x2)) ? conf->get_xcc() : conf->get_icc());
-		switch (COND)
-		{
-		case 0x0: return "will fall through";
-		case 0x1: return (cc & 0x4) ? "will branch" : "will fall through";
-		case 0x2: return ((cc & 0x04) | ((cc ^ (cc >> 2)) & 0x2)) ? "will branch" : "will fall through";
-		case 0x3: return ((cc ^ (cc >> 2)) & 0x2) ? "will branch" : "will fall through";
-		case 0x4: return (cc & 0x5) ? "will branch" : "will fall through";
-		case 0x5: return (cc & 0x1) ? "will branch" : "will fall through";
-		case 0x6: return (cc & 0x8) ? "will branch" : "will fall through";
-		case 0x7: return (cc & 0x2) ? "will branch" : "will fall through";
-		case 0x8: return "will branch";
-		case 0x9: return (cc & 0x4) ? "will fall through" : "will branch";
-		case 0xa: return ((cc & 0x04) | ((cc ^ (cc >> 2)) & 0x2)) ? "will fall through" : "will branch";
-		case 0xb: return ((cc ^ (cc >> 2)) & 0x2) ? "will fall through" : "will branch";
-		case 0xc: return (cc & 0x5) ? "will fall through" : "will branch";
-		case 0xd: return (cc & 0x1) ? "will fall through" : "will branch";
-		case 0xe: return (cc & 0x8) ? "will fall through" : "will branch";
-		case 0xf: return (cc & 0x2) ? "will fall through" : "will branch";
-		}
-		return nullptr;
+	case 0x0: return "will fall through";
+	case 0x1: return (cc & 0x4) ? "will branch" : "will fall through";
+	case 0x2: return ((cc & 0x04) | ((cc ^ (cc >> 2)) & 0x2)) ? "will branch" : "will fall through";
+	case 0x3: return ((cc ^ (cc >> 2)) & 0x2) ? "will branch" : "will fall through";
+	case 0x4: return (cc & 0x5) ? "will branch" : "will fall through";
+	case 0x5: return (cc & 0x1) ? "will branch" : "will fall through";
+	case 0x6: return (cc & 0x8) ? "will branch" : "will fall through";
+	case 0x7: return (cc & 0x2) ? "will branch" : "will fall through";
+	case 0x8: return "will branch";
+	case 0x9: return (cc & 0x4) ? "will fall through" : "will branch";
+	case 0xa: return ((cc & 0x04) | ((cc ^ (cc >> 2)) & 0x2)) ? "will fall through" : "will branch";
+	case 0xb: return ((cc ^ (cc >> 2)) & 0x2) ? "will fall through" : "will branch";
+	case 0xc: return (cc & 0x5) ? "will fall through" : "will branch";
+	case 0xd: return (cc & 0x1) ? "will fall through" : "will branch";
+	case 0xe: return (cc & 0x8) ? "will fall through" : "will branch";
+	case 0xf: return (cc & 0x2) ? "will fall through" : "will branch";
 	}
-	const char *bfcc_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
-	{
-		if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
-		auto const fcc(conf->get_fcc(use_cc ? BRCC : 0));
-		switch (COND)
-		{
-		case 0x0: return "will fall through";
-		case 0x1: return ((fcc == 1) || (fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0x2: return ((fcc == 1) || (fcc == 2)) ? "will branch" : "will fall through";
-		case 0x3: return ((fcc == 1) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0x4: return (fcc == 1) ? "will branch" : "will fall through";
-		case 0x5: return ((fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0x6: return (fcc == 2) ? "will branch" : "will fall through";
-		case 0x7: return (fcc == 3) ? "will branch" : "will fall through";
-		case 0x8: return "will branch";
-		case 0x9: return (fcc == 0) ? "will branch" : "will fall through";
-		case 0xa: return ((fcc == 0) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0xb: return ((fcc == 0) || (fcc == 2)) ? "will branch" : "will fall through";
-		case 0xc: return ((fcc == 0) || (fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0xd: return ((fcc == 0) || (fcc == 1)) ? "will branch" : "will fall through";
-		case 0xe: return ((fcc == 0) || (fcc == 1) || (fcc == 3)) ? "will branch" : "will fall through";
-		case 0xf: return ((fcc == 0) || (fcc == 1) || (fcc == 2)) ? "will branch" : "will fall through";
-		}
-		return nullptr;
-	}
-	const char *bpr_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
-	{
-		if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
-		const int64_t reg(conf->get_reg_r(RS1));
-		switch (COND)
-		{
-		case 1: return (reg == 0) ? "will branch" : "will fall through";
-		case 2: return (reg <= 0) ? "will branch" : "will fall through";
-		case 3: return (reg < 0) ? "will branch" : "will fall through";
-		case 5: return (reg != 0) ? "will branch" : "will fall through";
-		case 6: return (reg > 0) ? "will branch" : "will fall through";
-		case 7: return (reg >= 0) ? "will branch" : "will fall through";
-		}
-		return nullptr;
-	}
+	return nullptr;
 }
 
-const char * const sparc_disassembler::REG_NAMES[32] = {
+const char *bfcc_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
+{
+	if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
+	auto const fcc(conf->get_fcc(use_cc ? BRCC : 0));
+	switch (COND)
+	{
+	case 0x0: return "will fall through";
+	case 0x1: return ((fcc == 1) || (fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0x2: return ((fcc == 1) || (fcc == 2)) ? "will branch" : "will fall through";
+	case 0x3: return ((fcc == 1) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0x4: return (fcc == 1) ? "will branch" : "will fall through";
+	case 0x5: return ((fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0x6: return (fcc == 2) ? "will branch" : "will fall through";
+	case 0x7: return (fcc == 3) ? "will branch" : "will fall through";
+	case 0x8: return "will branch";
+	case 0x9: return (fcc == 0) ? "will branch" : "will fall through";
+	case 0xa: return ((fcc == 0) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0xb: return ((fcc == 0) || (fcc == 2)) ? "will branch" : "will fall through";
+	case 0xc: return ((fcc == 0) || (fcc == 2) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0xd: return ((fcc == 0) || (fcc == 1)) ? "will branch" : "will fall through";
+	case 0xe: return ((fcc == 0) || (fcc == 1) || (fcc == 3)) ? "will branch" : "will fall through";
+	case 0xf: return ((fcc == 0) || (fcc == 1) || (fcc == 2)) ? "will branch" : "will fall through";
+	}
+	return nullptr;
+}
+
+const char *bpr_comment(const sparc_disassembler::config *conf, bool use_cc, offs_t pc, uint32_t op)
+{
+	if (!conf || (conf->get_translated_pc() != pc)) return nullptr;
+	const int64_t reg(conf->get_reg_r(RS1));
+	switch (COND)
+	{
+	case 1: return (reg == 0) ? "will branch" : "will fall through";
+	case 2: return (reg <= 0) ? "will branch" : "will fall through";
+	case 3: return (reg < 0) ? "will branch" : "will fall through";
+	case 5: return (reg != 0) ? "will branch" : "will fall through";
+	case 6: return (reg > 0) ? "will branch" : "will fall through";
+	case 7: return (reg >= 0) ? "will branch" : "will fall through";
+	}
+	return nullptr;
+}
+
+} // anonymous namespace
+
+const char *const sparc_disassembler::REG_NAMES[32] = {
 	"%g0", "%g1", "%g2", "%g3", "%g4", "%g5", "%g6", "%g7",
 	"%o0", "%o1", "%o2", "%o3", "%o4", "%o5", "%o6", "%o7",
 	"%l0", "%l1", "%l2", "%l3", "%l4", "%l5", "%l6", "%l7",
@@ -577,7 +581,7 @@ const sparc_disassembler::vis_op_desc_map::value_type sparc_disassembler::VIS3B_
 
 inline uint32_t sparc_disassembler::freg(uint32_t val, bool shift) const
 {
-	return (shift && (m_version >= 9)) ? ((val & 0x1e) | ((val << 5) & 0x20)) : val;
+	return (shift && (m_version >= v9)) ? ((val & 0x1e) | ((val << 5) & 0x20)) : val;
 }
 
 template <typename T> inline void sparc_disassembler::add_int_op_desc(const T &desc)
@@ -756,7 +760,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 		switch (OP2)
 		{
 		case 0:
-			util::stream_format(stream, "%-*s0x%06x", m_op_field_width, (m_version >= 9) ? "illtrap" : "unimp", CONST22);
+			util::stream_format(stream, "%-*s0x%06x", m_op_field_width, (m_version >= v9) ? "illtrap" : "unimp", CONST22);
 			break;
 		case 4:
 			if (IMM22 == 0 && RD == 0)
@@ -873,14 +877,14 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 		case 0x28:
 			return dasm_read_state_reg(stream, pc, op);
 		case 0x29:
-			if (m_version <= 8)
+			if (m_version < v9)
 			{
 				util::stream_format(stream, "%-*s%%psr,%s", m_op_field_width, "rd", REG_NAMES[RD]);
 				return 4 | SUPPORTED;
 			}
 			break;
 		case 0x2a:
-			if (m_version >= 9)
+			if (m_version >= v9)
 			{
 				if (V9_PRIV_REG_NAMES[RS1])
 				{
@@ -895,7 +899,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 			}
 			break;
 		case 0x2b:
-			if (m_version >= 9)
+			if (m_version >= v9)
 			{
 				if (!USEIMM)
 				{
@@ -912,7 +916,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 		case 0x2c:
 			return dasm_move_cond(stream, pc, op);
 		case 0x2e:
-			if ((m_version >= 9) && (RS1 == 0))
+			if ((m_version >= v9) && (RS1 == 0))
 			{
 				if (USEIMM) util::stream_format(stream, "%-*s%d,%s", m_op_field_width, "popc", SIMM13, REG_NAMES[RD]);
 				else        util::stream_format(stream, "%-*s%s,%s", m_op_field_width, "popc", REG_NAMES[RS2], REG_NAMES[RD]);
@@ -924,7 +928,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 		case 0x30:
 			return dasm_write_state_reg(stream, pc, op);
 		case 0x31:
-			if (m_version >= 9)
+			if (m_version >= v9)
 			{
 				switch (RD)
 				{
@@ -952,7 +956,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 			}
 			break;
 		case 0x32:
-			if (m_version >= 9)
+			if (m_version >= v9)
 			{
 				if (V9_PRIV_REG_NAMES[RD])
 				{
@@ -979,7 +983,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 			}
 			break;
 		case 0x33:
-			if (m_version <= 8)
+			if (m_version < v9)
 			{
 				if (RS1 == 0)
 				{
@@ -1010,13 +1014,9 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 		case 0x3a:
 			return dasm_tcc(stream, pc, op);
 		case 0x3b:
-			if (m_version >= 8)
-			{
-				util::stream_format(stream, "%-*s", m_op_field_width, "flush");
-				dasm_address(stream, op);
-				return 4 | SUPPORTED;
-			}
-			break;
+			util::stream_format(stream, "%-*s", m_op_field_width, m_version >= v8 ? "flush" : "iflush");
+			dasm_address(stream, op);
+			return 4 | SUPPORTED;
 		case 0x3c:
 			if (!USEIMM && (RS1 == RS2) && (RS2 == RD) && (RD == 0))
 			{
@@ -1032,7 +1032,7 @@ offs_t sparc_disassembler::dasm(std::ostream &stream, offs_t pc, uint32_t op) co
 			}
 			break;
 		case 0x3e:
-			if ((m_version >= 9) & ((op & 0x7ffff) == 0))
+			if ((m_version >= v9) & ((op & 0x7ffff) == 0))
 			{
 				switch (RD)
 				{
@@ -1088,7 +1088,7 @@ offs_t sparc_disassembler::dasm_invalid(std::ostream &stream, offs_t pc, uint32_
 	}
 	else if ((OP == 2) && ((OP3 == 0x36) || (OP3 == 0x37)))
 	{
-		if (m_version >= 9)
+		if (m_version >= v9)
 			util::stream_format(stream, "IMPDEP%d impl-dep=%02x impl-dep=%05x", 1 + (OP3 & 1), RD, op & 0x7ffff);
 		else
 			util::stream_format(stream, "CPop%d opf=%03x rd=%d rs1=%d rs2=%d", 1 + (OP3 & 1), OPC, RD, RS1, RS2);
@@ -1126,7 +1126,7 @@ offs_t sparc_disassembler::dasm_branch(std::ostream &stream, offs_t pc, uint32_t
 
 offs_t sparc_disassembler::dasm_shift(std::ostream &stream, offs_t pc, uint32_t op, const char *mnemonic, const char *mnemonicx, const char *mnemonicx0) const
 {
-	if ((m_version >= 9) && USEEXT)
+	if ((m_version >= v9) && USEEXT)
 	{
 		if (USEIMM)
 			util::stream_format(stream, "%-*s%s,%d,%s", m_op_field_width, mnemonicx, REG_NAMES[RS1], SHCNT64, REG_NAMES[RD]);
@@ -1156,9 +1156,9 @@ offs_t sparc_disassembler::dasm_read_state_reg(std::ostream &stream, offs_t pc, 
 		util::stream_format(stream, "%-*s%%y,%s", m_op_field_width, "rd", REG_NAMES[RD]);
 		return 4 | SUPPORTED;
 	}
-	else if ((m_version == 8) || ((m_version >= 9) && !USEIMM))
+	else if ((m_version == v8) || (m_version == sparclite) || ((m_version >= v9) && !USEIMM))
 	{
-		if (!USEIMM && (RS1 == 15) && (RD == 0))
+		if (!USEIMM && (RS1 == 15) && (RD == 0) && (m_version != sparclite))
 		{
 			util::stream_format(stream, "stbar");
 			return 4 | SUPPORTED;
@@ -1176,7 +1176,7 @@ offs_t sparc_disassembler::dasm_read_state_reg(std::ostream &stream, offs_t pc, 
 			}
 		}
 	}
-	else if ((m_version >= 9) && USEIMM && (RS1 == 15) && (RD == 0))
+	else if ((m_version >= v9) && USEIMM && (RS1 == 15) && (RD == 0))
 	{
 		util::stream_format(stream, "%-*s", m_op_field_width, "membar");
 		uint32_t mask(MMASK | (CMASK << 4));
@@ -1216,9 +1216,9 @@ offs_t sparc_disassembler::dasm_write_state_reg(std::ostream &stream, offs_t pc,
 		}
 		return 4 | SUPPORTED;
 	}
-	else if (m_version >= 8)
+	else if (m_version >= v8)
 	{
-		if ((m_version >= 9) && USEIMM && (RS1 == 0) && (RD == 15))
+		if ((m_version >= v9) && USEIMM && (RS1 == 0) && (RD == 15))
 		{
 			util::stream_format(stream, "%-*s%d", m_op_field_width, "sir", SIMM13);
 			return 4 | SUPPORTED;
@@ -1265,7 +1265,7 @@ offs_t sparc_disassembler::dasm_write_state_reg(std::ostream &stream, offs_t pc,
 
 offs_t sparc_disassembler::dasm_move_cond(std::ostream &stream, offs_t pc, uint32_t op) const
 {
-	if ((m_version < 9) || !MOVCC_CC_NAMES[MOVCC]) return dasm_invalid(stream, pc, op);
+	if ((m_version < v9) || !MOVCC_CC_NAMES[MOVCC]) return dasm_invalid(stream, pc, op);
 
 	const std::streampos start_position(stream.tellp());
 	util::stream_format(stream, "mov%s", MOVCC_COND_NAMES[MOVCOND | ((MOVCC << 2) & 16)]);
@@ -1280,7 +1280,7 @@ offs_t sparc_disassembler::dasm_move_cond(std::ostream &stream, offs_t pc, uint3
 
 offs_t sparc_disassembler::dasm_move_reg_cond(std::ostream &stream, offs_t pc, uint32_t op) const
 {
-	if ((m_version < 9) || !MOVE_INT_COND_MNEMONICS[RCOND]) return dasm_invalid(stream, pc, op);
+	if ((m_version < v9) || !MOVE_INT_COND_MNEMONICS[RCOND]) return dasm_invalid(stream, pc, op);
 
 	if (USEIMM)
 		util::stream_format(stream, "%-*s%s,%d,%s", m_op_field_width, MOVE_INT_COND_MNEMONICS[RCOND], REG_NAMES[RS1], SIMM10, REG_NAMES[RD]);
@@ -1307,7 +1307,7 @@ offs_t sparc_disassembler::dasm_fpop1(std::ostream &stream, offs_t pc, uint32_t 
 offs_t sparc_disassembler::dasm_fpop2(std::ostream &stream, offs_t pc, uint32_t op) const
 {
 	// Move Floating-Point Register on Condition
-	if ((m_version >= 9) && (((op >> 18) & 1) == 0) && MOVCC_CC_NAMES[OPFCC])
+	if ((m_version >= v9) && (((op >> 18) & 1) == 0) && MOVCC_CC_NAMES[OPFCC])
 	{
 		const char *mnemonic;
 		bool shift;
@@ -1331,7 +1331,7 @@ offs_t sparc_disassembler::dasm_fpop2(std::ostream &stream, offs_t pc, uint32_t 
 	const auto it(m_fpop2_desc.find(OPF));
 	if (it != m_fpop2_desc.end())
 	{
-		if (m_version >= 9)
+		if (m_version >= v9)
 		{
 			if (it->second.int_rs1)
 			{
@@ -1428,7 +1428,7 @@ offs_t sparc_disassembler::dasm_jmpl(std::ostream &stream, offs_t pc, uint32_t o
 
 offs_t sparc_disassembler::dasm_return(std::ostream &stream, offs_t pc, uint32_t op) const
 {
-	util::stream_format(stream, "%-*s", m_op_field_width, (m_version >= 9) ? "return" : "rett");
+	util::stream_format(stream, "%-*s", m_op_field_width, (m_version >= v9) ? "return" : "rett");
 	dasm_address(stream, op);
 	return 4 | STEP_OUT | step_over_extra(1) | SUPPORTED;
 }
@@ -1442,7 +1442,7 @@ offs_t sparc_disassembler::dasm_tcc(std::ostream &stream, offs_t pc, uint32_t op
 	};
 	static const char *const cc_names[4] = { "%icc", nullptr, "%xcc", nullptr };
 	const char *const mnemonic(tcc_names[COND]);
-	if (m_version >= 9)
+	if (m_version >= v9)
 	{
 		const char *const cc(cc_names[TCCCC]);
 		if (!cc) return dasm_invalid(stream, pc, op);
@@ -1469,7 +1469,7 @@ offs_t sparc_disassembler::dasm_tcc(std::ostream &stream, offs_t pc, uint32_t op
 
 offs_t sparc_disassembler::dasm_ldst(std::ostream &stream, offs_t pc, uint32_t op) const
 {
-	if (m_version >= 9)
+	if (m_version >= v9)
 	{
 		switch (OP3)
 		{
@@ -1486,6 +1486,7 @@ offs_t sparc_disassembler::dasm_ldst(std::ostream &stream, offs_t pc, uint32_t o
 				util::stream_format(stream, "%-*s[", m_op_field_width, "ldx");
 				dasm_address(stream, op);
 				util::stream_format(stream, "],%%efsr");
+				return 4 | SUPPORTED;
 			}
 			break;
 		case 0x25: // Store floating-point state register
@@ -1552,8 +1553,8 @@ offs_t sparc_disassembler::dasm_ldst(std::ostream &stream, offs_t pc, uint32_t o
 			dasm_address(stream, op);
 			stream << ']';
 			return 4 | SUPPORTED;
-		case 0x26: // Store Floating-point deferred-trap Queue
-		case 0x36: // Store Coprocessor deferred-trap Queue
+		case 0x26: // Store Double Floating-point deferred-trap Queue
+		case 0x36: // Store Double Coprocessor deferred-trap Queue
 			util::stream_format(stream, "%-*s%%%cq,[", m_op_field_width, "std", (OP3 == 0x36) ? 'c' : 'f');
 			dasm_address(stream, op);
 			stream << ']';
@@ -1565,7 +1566,7 @@ offs_t sparc_disassembler::dasm_ldst(std::ostream &stream, offs_t pc, uint32_t o
 	if (it == m_ldst_desc.end())
 		return dasm_invalid(stream, pc, op);
 
-	if (it->second.alternate && USEIMM && (m_version < 9))
+	if (it->second.alternate && USEIMM && (m_version < v9))
 		return dasm_invalid(stream, pc, op);
 
 	if (it->second.g0_synth && (RD == 0))

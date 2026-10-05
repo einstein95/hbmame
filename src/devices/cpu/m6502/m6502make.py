@@ -31,7 +31,16 @@ def load_opcodes(fname):
         if not line: continue
         if line.startswith(" ") or line.startswith("\t"):
             # append instruction to last opcode
-            opcodes[-1][1].append(line)
+            if line == '\tprefetch();':
+                opcodes[-1][1].append("\tprefetch_start();")
+                opcodes[-1][1].append("\tm_IR = read_sync(m_PC);")
+                opcodes[-1][1].append("\tprefetch_end();")
+            elif line == '\tprefetch_noirq();':
+                opcodes[-1][1].append("\tprefetch_start();")
+                opcodes[-1][1].append("\tm_IR = read_sync(m_PC);")
+                opcodes[-1][1].append("\tprefetch_end_noirq();")
+            else:
+                opcodes[-1][1].append(line)
         else:
             # add new opcode
             opcodes.append((line, []))
@@ -59,110 +68,118 @@ def emit(f, text):
     """write string to file"""
     print(text, file=f)
 
-FULL_PROLOG="""\
-void %(device)s_device::%(opcode)s_full()
-{
-"""
 
-FULL_EPILOG="""\
-}
-"""
-
-FULL_EAT_ALL="""\
-\ticount=0; inst_substate = %(substate)s; return;
-"""
-
-FULL_MEMORY="""\
-\tif(icount == 0) { inst_substate = %(substate)s; return; }
-%(ins)s
-\ticount--;
-"""
-
-FULL_NONE="""\
-%(ins)s
-"""
-
-PARTIAL_PROLOG="""\
-void %(device)s_device::%(opcode)s_partial()
-{
-switch(inst_substate) {
-case 0:
-"""
-
-PARTIAL_EPILOG="""\
-}
-\tinst_substate = 0;
-}
-
-"""
-
-PARTIAL_EAT_ALL="""\
-\ticount=0; inst_substate = %(substate)s; return;
-case %(substate)s:;
-"""
-
-PARTIAL_MEMORY="""\
-\tif(icount == 0) { inst_substate = %(substate)s; return; }
-\t[[fallthrough]];
-case %(substate)s:
-%(ins)s
-\ticount--;
-"""
-
-PARTIAL_NONE="""\
-%(ins)s
-"""
 def identify_line_type(ins):
     if "eat-all-cycles" in ins: return "EAT"
-    for s in ["read", "write", "prefetch(", "prefetch_noirq("]:
-        if s in ins:
-            return "MEMORY"
+    if "read" in ins: return "MEMORY_READ"
+    if "write" in ins: return "MEMORY_WRITE"
     return "NONE"
 
 
+def samples_interrupt(ins, single_cycle):
+    return (single_cycle or "read_sync" not in ins) and "_noirq" not in ins
+
+
+RDY_GATED_DEVICES = {"m6502", "m6510"}
+CMOS_DEVICES = {"w65c02", "r65c02", "r65c19", "w65c02s", "m65ce02", "m4510", "w65816"}
+
+
 def save_opcodes(f, device, opcodes):
+    rdy_gated = device in RDY_GATED_DEVICES
+    interrupt_sampled = device not in CMOS_DEVICES
     for name, instructions in opcodes:
-        d = { "device": device,
-              "opcode": name,
-              }
-
-        emit(f, FULL_PROLOG % d)
+        single_cycle = sum(identify_line_type(ins) in ("MEMORY_READ", "MEMORY_WRITE") for ins in instructions) == 1
+        emit(f, "void %s_device::%s_full()" % (device, name))
+        emit(f, "{")
         substate = 1
         for ins in instructions:
-            d["substate"] = str(substate)
-            d["ins"] =  ins
             line_type = identify_line_type(ins)
             if line_type == "EAT":
-                emit(f, FULL_EAT_ALL % d)
+                emit(f, "\tdebugger_wait_hook();")
+                emit(f, "\tm_icount = 0;")
+                emit(f, "\tm_inst_substate = %d;" % substate)
+                emit(f, "\treturn;")
                 substate += 1
-            elif line_type == "MEMORY":
-                emit(f, FULL_MEMORY % d)
-                substate += 1
+            elif line_type in ("MEMORY_READ", "MEMORY_WRITE"):
+                if rdy_gated and line_type == "MEMORY_READ":
+                    emit(f, "\twhile(!m_rdy_state) {")
+                    emit(f, "\t\tm_icount--;")
+                    emit(f, "\t\tif(m_icount <= 0) {")
+                    emit(f, "\t\t\tm_inst_substate = %d;" % substate)
+                    emit(f, "\t\t\treturn;")
+                    emit(f, "\t\t}")
+                    emit(f, "\t}")
+                if interrupt_sampled and samples_interrupt(ins, single_cycle):
+                    emit(f, "\tsample_interrupt();")
+                emit(f, ins)
+                emit(f, "\tm_icount--;")
+                emit(f, "\tif(m_icount <= 0) {")
+                emit(f, "\t\tif(access_to_be_redone()) {")
+                emit(f, "\t\t\tm_icount++;")
+                emit(f, "\t\t\tm_inst_substate = %d;" % substate)
+                emit(f, "\t\t} else")
+                emit(f, "\t\t\tm_inst_substate = %d;" % (substate+1))
+                emit(f, "\t\treturn;")
+                emit(f, "\t}")
+                substate += 2
             else:
-                emit(f, FULL_NONE %d)
-        emit(f, FULL_EPILOG % d)
+                emit(f, ins)
+        emit(f, "}")
+        emit(f, "")
 
-        emit(f, PARTIAL_PROLOG % d)
+        emit(f, "void %s_device::%s_partial()" % (device, name))
+        emit(f, "{")
+        emit(f, "\tswitch(m_inst_substate) {")
+        emit(f, "case 0:")
         substate = 1
         for ins in instructions:
-            d["substate"] = str(substate)
-            d["ins"] =  ins
             line_type = identify_line_type(ins)
             if line_type == "EAT":
-                emit(f, PARTIAL_EAT_ALL % d)
+                emit(f, "\tdebugger_wait_hook();")
+                emit(f, "\tm_icount = 0;")
+                emit(f, "\tm_inst_substate = %d;" % substate)
+                emit(f, "\treturn;")
+                emit(f, "\tcase %d:;" % substate)
                 substate += 1
-            elif line_type == "MEMORY":
-                emit(f, PARTIAL_MEMORY % d)
-                substate += 1
+            elif line_type in ("MEMORY_READ", "MEMORY_WRITE"):
+                emit(f, "\t[[fallthrough]];")
+                emit(f, "case %d:" % substate)
+                if rdy_gated and line_type == "MEMORY_READ":
+                    emit(f, "\twhile(!m_rdy_state) {")
+                    emit(f, "\t\tm_icount--;")
+                    emit(f, "\t\tif(m_icount <= 0) {")
+                    emit(f, "\t\t\tm_inst_substate = %d;" % substate)
+                    emit(f, "\t\t\treturn;")
+                    emit(f, "\t\t}")
+                    emit(f, "\t}")
+                if interrupt_sampled and samples_interrupt(ins, single_cycle):
+                    emit(f, "\tsample_interrupt();")
+                emit(f, ins)
+                emit(f, "\tm_icount--;")
+                emit(f, "\tif(m_icount <= 0) {")
+                emit(f, "\t\tif(access_to_be_redone()) {")
+                emit(f, "\t\t\tm_icount++;")
+                emit(f, "\t\t\tm_inst_substate = %d;" % substate)
+                emit(f, "\t\t} else")
+                emit(f, "\t\t\tm_inst_substate = %d;" % (substate+1))
+                emit(f, "\t\treturn;")
+                emit(f, "\t}")
+                emit(f, "\t[[fallthrough]];")
+                emit(f, "case %d:;" % (substate+1))
+                substate += 2
             else:
-                emit(f, PARTIAL_NONE %d)
-        emit(f, PARTIAL_EPILOG % d)
+                emit(f, ins)
+        emit(f, "\tbreak;")
+        emit(f, "}")
+        emit(f, "\tm_inst_substate = 0;")
+        emit(f, "}")
+        emit(f, "")
 
 
 DO_EXEC_FULL_PROLOG="""\
 void %(device)s_device::do_exec_full()
 {
-\tswitch(inst_state) {
+\tswitch(m_inst_state) {
 """
 
 DO_EXEC_FULL_EPILOG="""\
@@ -173,7 +190,7 @@ DO_EXEC_FULL_EPILOG="""\
 DO_EXEC_PARTIAL_PROLOG="""\
 void %(device)s_device::do_exec_partial()
 {
-\tswitch(inst_state) {
+\tswitch(m_inst_state) {
 """
 
 DO_EXEC_PARTIAL_EPILOG="""\
@@ -195,7 +212,7 @@ def save_tables(f, device, states):
     d = { "device": device,
           "disasm_count": total_states-1
           }
-    
+
     emit(f, DO_EXEC_FULL_PROLOG % d)
     for n, state in enumerate(states):
         if state == ".": continue
@@ -220,7 +237,7 @@ def save_dasm(f, device, states):
     d = { "device": device,
           "disasm_count": total_states-1
           }
-    
+
     emit(f, DISASM_PROLOG % d )
     for n, state in enumerate(states):
         if state == ".": continue
@@ -229,9 +246,9 @@ def save_dasm(f, device, states):
         opc = tokens[0]
         mode = tokens[-1]
         extra = "0"
-        if opc in ["jsr", "bsr", "callf", "jpi", "jsb"]:
+        if opc in ["jsr", "bsr", "callf", "jpi", "jsb", "jsl"]:
             extra = "STEP_OVER"
-        elif opc in ["rts", "rti", "rtn", "retf", "tpi"]:
+        elif opc in ["rts", "rti", "rtn", "retf", "tpi", "rtl"]:
             extra = "STEP_OUT"
         elif opc in ["bcc", "bcs", "beq", "bmi", "bne", "bpl", "bvc", "bvs", "bbr", "bbs", "bbc", "bar", "bas"]:
             extra = "STEP_COND"
@@ -305,4 +322,3 @@ def main(argv):
 # ======================================================================
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
-

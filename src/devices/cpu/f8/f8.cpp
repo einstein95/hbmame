@@ -68,7 +68,8 @@ f8_cpu_device::f8_cpu_device(const machine_config &mconfig, const char *tag, dev
 	m_program_config("program", ENDIANNESS_BIG, 8, 16, 0),
 	m_regs_config("register", ENDIANNESS_BIG, 8, 6, 0, address_map_constructor(FUNC(f8_cpu_device::regs_map), this)),
 	m_io_config("io", ENDIANNESS_BIG, 8, 8, 0),
-	m_romc08_callback(*this)
+	m_romc08_callback(*this, 0),
+	m_int_cycle(*this, 0)
 { }
 
 void f8_cpu_device::regs_map(address_map &map)
@@ -104,11 +105,6 @@ void f8_cpu_device::state_string_export(const device_state_entry &entry, std::st
 					m_w & 0x01 ? 'S':'.');
 			break;
 	}
-}
-
-void f8_cpu_device::device_resolve_objects()
-{
-	m_romc08_callback.resolve_safe(0);
 }
 
 void f8_cpu_device::device_start()
@@ -156,7 +152,7 @@ void f8_cpu_device::device_start()
 
 	u8 *regs = static_cast<u8 *>(memshare("regs")->ptr());
 	for (int r = 0; r < 9; r++)
-		state_add(F8_R0 + r, string_format("R%d", r).c_str(), regs[r]);
+		state_add(F8_R0 + r, string_format("R%d", r), regs[r]);
 	state_add(F8_J, "J", regs[9]);
 	state_add<u16>(F8_H, "H",
 		[regs]() { return u16(regs[10]) << 8 | regs[11]; },
@@ -285,7 +281,6 @@ void f8_cpu_device::ROMC_00(int insttim)
 	 * code addressed by PC0; then all devices increment the contents
 	 * of PC0.
 	 */
-
 	m_dbus = m_program.read_byte(m_pc0);
 	m_pc0 += 1;
 	m_icount -= insttim; /* ROMC00 is usually short, not short+long, but DS is long */
@@ -454,7 +449,8 @@ void f8_cpu_device::ROMC_0F()
 	 * must move the contents of the data bus into the low order
 	 * byte of PC0.
 	 */
-	m_irq_vector = standard_irq_callback(F8_INPUT_LINE_INT_REQ);
+	m_irq_vector = m_int_cycle();
+	standard_irq_callback(F8_INPUT_LINE_INT_REQ, m_pc0);
 	m_dbus = m_irq_vector & 0x00ff;
 	m_pc1 = m_pc0;
 	m_pc0 = (m_pc0 & 0xff00) | m_dbus;

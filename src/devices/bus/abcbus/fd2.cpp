@@ -39,6 +39,8 @@ Notes:
 #include "emu.h"
 #include "fd2.h"
 
+#include "formats/abcfd2_dsk.h"
+
 
 
 //**************************************************************************
@@ -193,8 +195,8 @@ void abc_fd2_device::pio_pb_w(uint8_t data)
 
 	floppy_image_device *floppy = nullptr;
 
-	if (BIT(data, 0)) floppy = m_floppy0->get_device();
-	if (BIT(data, 1)) floppy = m_floppy1->get_device();
+	if (BIT(data, 0)) floppy = m_floppy[0]->get_device();
+	if (BIT(data, 1)) floppy = m_floppy[1]->get_device();
 
 	m_fdc->set_floppy(floppy);
 
@@ -258,8 +260,8 @@ void abc_fd2_device::device_add_mconfig(machine_config &config)
 	m_fdc->drq_wr_callback().set(m_pio, FUNC(z80pio_device::pb5_w));
 	m_fdc->hld_wr_callback().set(m_pio, FUNC(z80pio_device::pb6_w));
 
-	FLOPPY_CONNECTOR(config, m_floppy0, abc_fd2_floppies, "525sssd", abc_fd2_device::floppy_formats).enable_sound(true);
-	FLOPPY_CONNECTOR(config, m_floppy1, abc_fd2_floppies, "525sssd", abc_fd2_device::floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, m_floppy[0], abc_fd2_floppies, "525sssd", abc_fd2_device::floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, m_floppy[1], abc_fd2_floppies, "525sssd", abc_fd2_device::floppy_formats).enable_sound(true);
 }
 
 
@@ -277,8 +279,7 @@ abc_fd2_device::abc_fd2_device(const machine_config &mconfig, const char *tag, d
 	m_maincpu(*this, Z80_TAG),
 	m_pio(*this, Z80PIO_TAG),
 	m_fdc(*this, FD1771_TAG),
-	m_floppy0(*this, FD1771_TAG ":0"),
-	m_floppy1(*this, FD1771_TAG ":1"),
+	m_floppy(*this, FD1771_TAG ":%u", 0U),
 	m_dos_rom(*this, "dos"),
 	m_cs(false), m_status(0), m_data(0)
 {
@@ -346,7 +347,7 @@ uint8_t abc_fd2_device::abcbus_stat()
 //  abcbus_inp -
 //-------------------------------------------------
 
-uint8_t abc_fd2_device::abcbus_inp()
+uint8_t abc_fd2_device::abcbus_inp(offs_t offset)
 {
 	uint8_t data = 0xff;
 
@@ -369,7 +370,7 @@ uint8_t abc_fd2_device::abcbus_inp()
 //  abcbus_out -
 //-------------------------------------------------
 
-void abc_fd2_device::abcbus_out(uint8_t data)
+void abc_fd2_device::abcbus_out(offs_t offset, uint8_t data)
 {
 	if (!m_cs) return;
 

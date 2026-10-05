@@ -13,7 +13,6 @@
 #pragma once
 
 #include "flopimg.h"
-#include "imageutl.h"
 
 class g64_format : public floppy_image_format_t
 {
@@ -21,13 +20,13 @@ public:
 	g64_format();
 
 	virtual int identify(util::random_read &io, uint32_t form_factor, const std::vector<uint32_t> &variants) const override;
-	virtual bool load(util::random_read &io, uint32_t form_factor, const std::vector<uint32_t> &variants, floppy_image *image) const override;
-	virtual bool save(util::random_read_write &io, const std::vector<uint32_t> &variants, floppy_image *image) const override;
+	virtual bool load(util::random_read &io, uint32_t form_factor, const std::vector<uint32_t> &variants, floppy_image &image) const override;
+	virtual bool save(util::random_read_write &io, const std::vector<uint32_t> &variants, const floppy_image &image) const override;
 
-	virtual const char *name() const override;
-	virtual const char *description() const override;
-	virtual const char *extensions() const override;
-	virtual bool supports_save() const override { return true; }
+	virtual const char *name() const noexcept override;
+	virtual const char *description() const noexcept override;
+	virtual const char *extensions() const noexcept override;
+	virtual bool supports_save() const noexcept override { return true; }
 
 protected:
 	enum
@@ -47,7 +46,17 @@ protected:
 
 	static const uint32_t c1541_cell_size[];
 
-	static int generate_bitstream(int track, int head, int speed_zone, std::vector<bool> &trackbuf, floppy_image *image);
+	static int speed_zone(int cylinder);
+	static uint32_t raw_track_size(int speed_zone);
+	static void generate_empty_track(int cylinder, int head, uint8_t fill, floppy_image &image);
+	static bool is_empty_track(const std::vector<bool> &trackbuf);
+	static int generate_bitstream(int track, int head, int speed_zone, std::vector<bool> &trackbuf, const floppy_image &image);
+
+	// encodes one track's GCR bitstream for save(); returns -1 on a genuine
+	// zone-detection error, 0 if the track has no data to write (skip), 1
+	// if packed/zone were filled in. Shared by save()'s size-probe pass and
+	// its write pass so both agree exactly on what a given track encodes to.
+	static int encode_track(int track, int head, const floppy_image &image, std::vector<uint8_t> &packed, int &zone);
 };
 
 extern const g64_format FLOPPY_G64_FORMAT;
